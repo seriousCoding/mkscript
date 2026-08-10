@@ -10,10 +10,12 @@ usage() {
   cat <<'EOF'
 Usage: mkscript [OPTION]... PATH
 
-Create an executable Bash script at PATH.
+Create an executable Bash script at PATH or link an existing file into "$HOME/.local/bin".
 
 Options:
   -s, --strict   add "set -euo pipefail" after the shebang
+  -g, --global   create a symlink in "$HOME/.local/bin"
+  -l, --link     create only a symlink for an existing file
       --help     display this help and exit
       --version  output version information and exit
 EOF
@@ -82,6 +84,39 @@ safe_command_path() {
   esac
 }
 
+absolute_path() {
+  local path=$1
+  local parent
+  local base
+  local resolved_parent
+
+  parent=$(parent_dir "$path")
+  base=$(base_name "$path")
+
+  (
+    cd "$parent" >/dev/null 2>&1 || exit 1
+    resolved_parent=$(pwd -P)
+    if [ "$resolved_parent" = '/' ]; then
+      printf '/%s\n' "$base"
+    else
+      printf '%s/%s\n' "$resolved_parent" "$base"
+    fi
+  )
+}
+
+global_link_path() {
+  local target=$1
+  local home_dir=${HOME:-}
+  local base
+
+  if [ -z "$home_dir" ]; then
+    fail_create 'HOME is not set; cannot create a global link'
+  fi
+
+  base=$(base_name "$target")
+  printf '%s/.local/bin/%s\n' "$home_dir" "$base"
+}
+
 validate_target() {
   local target=$1
   local parent
@@ -107,6 +142,39 @@ validate_target() {
   fi
 }
 
+validate_global_link() {
+  local link_path=$1
+  local global_dir
+
+  global_dir=$(parent_dir "$link_path")
+
+  if [ -e "$global_dir" ] || [ -L "$global_dir" ]; then
+    if [ ! -d "$global_dir" ]; then
+      fail_create "global bin directory is not a directory: $global_dir"
+    fi
+  fi
+
+  if [ -d "$link_path" ]; then
+    fail_create "refusing to overwrite existing global path: $link_path"
+  fi
+
+  if [ -e "$link_path" ] || [ -L "$link_path" ]; then
+    fail_create "refusing to overwrite existing global path: $link_path"
+  fi
+}
+
+validate_link_source() {
+  local target=$1
+
+  if [ -d "$target" ]; then
+    fail_create "cannot link a directory: $target"
+  fi
+
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+    fail_create "cannot link missing path: $target"
+  fi
+}
+
 write_skeleton() {
   local destination=$1
   local strict_enabled=$2
@@ -117,6 +185,14 @@ write_skeleton() {
       printf 'set -euo pipefail\n'
     fi
   } > "$destination"
+}
+
+cleanup_target() {
+  local target=$1
+  local command_target
+
+  command_target=$(safe_command_path "$target")
+  rm -f "$command_target"
 }
 
 create_script() {
@@ -131,57 +207,148 @@ create_script() {
   fi
 
   if ! write_skeleton "$target" "$strict_enabled"; then
-    rm -f "$command_target"
+    cleanup_target "$target"
     fail_create "failed to write script: $target"
   fi
 
   if ! chmod 755 "$command_target"; then
-    rm -f "$command_target"
+    cleanup_target "$target"
     fail_create "failed to mark script executable: $target"
   fi
 }
 
+create_global_link() {
+  local absolute_target=$1
+  local link_path=$2
+  local global_dir
+
+  global_dir=$(parent_dir "$link_path")
+
+  mkdir -p "$global_dir" && ln -s "$absolute_target" "$link_path"
+}
+
+confirm_link_action() {
+  local target=$1
+  local link_path=$2
+  local reply
+
+  printf "Are you sure you want to link source path '%s' to '%s'? [y/N] " "$target" "$link_path"
+
+  if ! IFS= read -r reply; then
+    fail_create "link cancelled: $target"
+  fi
+
+  case $reply in
+    [Yy]|[Yy][Ee][Ss])
+      ;;
+    *)
+      fail_create "link cancelled: $target"
+      ;;
+  esac
+}
+
 main() {
   local strict_enabled=0
+  local global_enabled=0
+  local link_only=0
+  local literal_args=0
+  local target=''
+  local link_path=''
+  local absolute_target=''
 
   while [ $# -gt 0 ]; do
-    case $1 in
-      -s|--strict)
-        strict_enabled=1
-        shift
-        ;;
-      --help)
-        usage
-        exit 0
-        ;;
-      --version)
-        print_version
-        exit 0
-        ;;
-      --)
-        shift
-        break
-        ;;
-      -*)
-        fail_usage "unknown option: $1"
-        ;;
-      *)
-        break
-        ;;
-    esac
+    if [ "$literal_args" -eq 0 ]; then
+      case $1 in
+        -s|--strict)
+          strict_enabled=1
+          shift
+          continue
+          ;;
+        -g|--global)
+          global_enabled=1
+          shift
+          continue
+          ;;
+        -l|--link)
+          link_only=1
+          shift
+          continue
+          ;;
+        --help)
+          usage
+          exit 0
+          ;;
+        --version)
+          print_version
+          exit 0
+          ;;
+        --)
+          literal_args=1
+          shift
+          continue
+          ;;
+        -*)
+          fail_usage "unknown option: $1"
+          ;;
+      esac
+    fi
+
+    if [ -n "$target" ]; then
+      fail_usage "expected exactly one output path"
+    fi
+
+    target=$1
+    shift
   done
 
-  if [ $# -eq 0 ]; then
+  if [ -z "$target" ]; then
     fail_usage "missing output path"
   fi
 
-  if [ $# -ne 1 ]; then
-    fail_usage "expected exactly one output path"
+  if [ "$link_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
+    fail_usage "cannot combine --link with --global"
   fi
 
-  validate_target "$1"
-  create_script "$1" "$strict_enabled"
-  printf 'Created script: %s\n' "$1"
+  if [ "$link_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "cannot combine --link with --strict"
+  fi
+
+  if [ "$link_only" -eq 1 ]; then
+    validate_link_source "$target"
+    link_path=$(global_link_path "$target")
+    validate_global_link "$link_path"
+    absolute_target=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
+    confirm_link_action "$target" "$link_path"
+
+    if ! create_global_link "$absolute_target" "$link_path"; then
+      fail_create "failed to create global link: $link_path"
+    fi
+
+    printf 'Created global link: %s -> %s\n' "$link_path" "$absolute_target"
+    exit 0
+  fi
+
+  validate_target "$target"
+
+  if [ "$global_enabled" -eq 1 ]; then
+    link_path=$(global_link_path "$target")
+    validate_global_link "$link_path"
+    absolute_target=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
+  fi
+
+  create_script "$target" "$strict_enabled"
+
+  if [ "$global_enabled" -eq 1 ]; then
+    if ! create_global_link "$absolute_target" "$link_path"; then
+      cleanup_target "$target"
+      fail_create "failed to create global link: $link_path"
+    fi
+  fi
+
+  printf 'Created script: %s\n' "$target"
+  if [ "$global_enabled" -eq 1 ]; then
+    printf 'Created global link: %s -> %s\n' "$link_path" "$absolute_target"
+  fi
 }
 
 main "$@"

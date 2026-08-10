@@ -1,5 +1,8 @@
-mkscript (1.0.0-1) unstable; urgency=medium
+mkscript (1.0.1-1) unstable; urgency=medium
 
-  * Initial release.
+  * Add global shortcut creation with -g and --global.
+  * Add link-only shortcut mode with -l and --link.
+  * Allow supported flags in flexible order.
+  * Document the new shortcut workflows.
 
- -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 10 Aug 2026 10:00:00 +0000
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 10 Aug 2026 12:30:00 +0000

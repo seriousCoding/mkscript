@@ -65,7 +65,7 @@ debuild -us -uc -b
 3. Lint and test it.
 
 ```bash
-lintian ../mkscript_1.0.0-1_all.changes
+lintian ../mkscript_1.0.1-1_all.changes
 autopkgtest . -- null
 ```
 
@@ -93,7 +93,7 @@ For real review work, also do clean-room builds with `sbuild` or `pbuilder`.
 reportbug wnpp
 debuild -S -sa
 debuild -us -uc -b
-lintian ../mkscript_1.0.0-1_all.changes
+lintian ../mkscript_1.0.1-1_all.changes
 autopkgtest . -- null
 ```
 
@@ -220,7 +220,7 @@ rpmlint packaging/rpm/mkscript.spec
 2. Run a clean build in `mock`.
 
 ```bash
-mock -r fedora-rawhide-x86_64 --rebuild mkscript-1.0.0-1.src.rpm
+mock -r fedora-rawhide-x86_64 --rebuild mkscript-1.0.1-1.src.rpm
 ```
 
 3. File the review bug in Fedora Bugzilla.
@@ -300,7 +300,7 @@ If ABI timing requires it, you may also encounter `epel9-next`.
 
 ```bash
 make test
-lintian ../mkscript_1.0.0-1_all.changes
+lintian ../mkscript_1.0.1-1_all.changes
 autopkgtest . -- null
 ```
 
@@ -309,7 +309,7 @@ autopkgtest . -- null
 ```bash
 make test
 rpmlint packaging/rpm/mkscript.spec
-mock -r fedora-rawhide-x86_64 --rebuild mkscript-1.0.0-1.src.rpm
+mock -r fedora-rawhide-x86_64 --rebuild mkscript-1.0.1-1.src.rpm
 ```
 
 ## Licensing checklist

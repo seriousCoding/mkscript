@@ -10,7 +10,7 @@ Owner: `Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>`
 
 ```text
 * Package name    : mkscript
-  Version         : 1.0.0
+  Version         : 1.0.1
   Upstream Contact: Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>
 * URL             : https://github.com/seriousCoding/mkscript
 * License         : MIT

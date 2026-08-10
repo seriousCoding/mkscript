@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.0.0
+Version:        1.0.1
 Release:        1%{?dist}
 Summary:        Create executable Bash script skeletons safely
 
@@ -15,8 +15,9 @@ Requires:       bash
 %description
 mkscript creates executable Bash script files with a standard
 #!/usr/bin/env bash shebang. It refuses to overwrite existing files,
-symbolic links, and directories, and can optionally add a Bash
-strict-mode line via -s or --strict.
+symbolic links, and directories, can optionally add a Bash strict-mode
+line via -s or --strict, and can create shortcuts in ~/.local/bin for
+new or existing local scripts.
 
 %prep
 %autosetup
@@ -39,5 +40,5 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
-* Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.0.0-1
-- Initial package
+* Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.0.1-1
+- Add global and link-only shortcut support

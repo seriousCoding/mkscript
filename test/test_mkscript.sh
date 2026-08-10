@@ -80,6 +80,29 @@ assert_executable() {
   fi
 }
 
+assert_not_exists() {
+  local path=$1
+  local message=$2
+
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    fail "$message"
+  fi
+}
+
+assert_symlink_target() {
+  local path=$1
+  local expected_target=$2
+  local message=$3
+  local actual_target
+
+  if [ ! -L "$path" ]; then
+    fail "$message"
+  fi
+
+  actual_target=$(readlink "$path")
+  assert_equals "$expected_target" "$actual_target" "$message"
+}
+
 RUN_STATUS=0
 RUN_STDOUT=''
 RUN_STDERR=''
@@ -101,6 +124,32 @@ run_capture() {
   RUN_STDERR=$(cat "$stderr_file")
 
   rm -f "$stdout_file" "$stderr_file"
+}
+
+run_capture_with_input() {
+  local input=$1
+  local stdin_file
+  local stdout_file
+  local stderr_file
+
+  shift
+
+  stdin_file=$(mktemp)
+  stdout_file=$(mktemp)
+  stderr_file=$(mktemp)
+
+  printf '%s' "$input" > "$stdin_file"
+
+  if "$@" <"$stdin_file" >"$stdout_file" 2>"$stderr_file"; then
+    RUN_STATUS=0
+  else
+    RUN_STATUS=$?
+  fi
+
+  RUN_STDOUT=$(cat "$stdout_file")
+  RUN_STDERR=$(cat "$stderr_file")
+
+  rm -f "$stdin_file" "$stdout_file" "$stderr_file"
 }
 
 test_plain_script_creation() {
@@ -147,6 +196,8 @@ test_help_output() {
   assert_status 0 "$RUN_STATUS" 'help should exit successfully'
   assert_contains "$RUN_STDOUT" 'Usage: mkscript [OPTION]... PATH' 'help should show usage'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
+  assert_contains "$RUN_STDOUT" '-g, --global' 'help should document global mode'
+  assert_contains "$RUN_STDOUT" '-l, --link' 'help should document link-only mode'
 }
 
 test_version_output() {
@@ -202,6 +253,194 @@ test_directory_target_refusal() {
   rm -rf "$sandbox"
 }
 
+test_global_mode_with_trailing_strict_flag() {
+  local sandbox
+  local home_dir
+  local expected_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  expected_target=$(cd "$sandbox" && pwd -P)/test
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -g test -s
+  assert_status 0 "$RUN_STATUS" 'global mode should allow strict mode after the script name'
+  assert_file_equals test $'#!/usr/bin/env bash\nset -euo pipefail\n' 'global strict script should include strict mode'
+  assert_symlink_target "$home_dir/.local/bin/test" "$expected_target" 'global link should point to the created script'
+  assert_contains "$RUN_STDOUT" 'Created global link:' 'global mode should report the created link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_global_mode_with_trailing_global_flag() {
+  local sandbox
+  local home_dir
+  local expected_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  expected_target=$(cd "$sandbox" && pwd -P)/test
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" test -g
+  assert_status 0 "$RUN_STATUS" 'global mode should allow the global flag after the script name'
+  assert_file_equals test $'#!/usr/bin/env bash\n' 'global mode without strict should only contain the shebang'
+  assert_symlink_target "$home_dir/.local/bin/test" "$expected_target" 'trailing global flag should create the expected symlink'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_global_mode_refuses_existing_global_path() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir/.local/bin"
+  printf 'busy\n' > "$home_dir/.local/bin/test"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" test -g
+  assert_status 73 "$RUN_STATUS" 'global mode should refuse to overwrite an existing global path'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing global path' 'global path conflicts should be explained'
+  assert_not_exists "$sandbox/test" 'global path conflicts should not create a local script'
+  assert_file_equals "$home_dir/.local/bin/test" $'busy\n' 'existing global paths should remain unchanged'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_links_existing_file() {
+  local sandbox
+  local home_dir
+  local expected_target
+  local expected_link
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  expected_target=$(cd "$sandbox" && pwd -P)/test
+  expected_link="$home_dir/.local/bin/test"
+  mkdir -p "$home_dir"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
+  chmod 755 "$sandbox/test"
+  cd "$sandbox"
+  run_capture_with_input $'y\n' env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -l test
+  assert_status 0 "$RUN_STATUS" 'link-only mode should link an existing file after confirmation'
+  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test' to '$expected_link'?" 'link-only mode should prompt for confirmation'
+  assert_symlink_target "$expected_link" "$expected_target" 'link-only mode should create the expected symlink'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_links_existing_sh_file_with_trailing_flag() {
+  local sandbox
+  local home_dir
+  local expected_target
+  local expected_link
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  expected_target=$(cd "$sandbox" && pwd -P)/test.sh
+  expected_link="$home_dir/.local/bin/test.sh"
+  mkdir -p "$home_dir"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test.sh"
+  chmod 755 "$sandbox/test.sh"
+  cd "$sandbox"
+  run_capture_with_input $'yes\n' env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" test.sh -l
+  assert_status 0 "$RUN_STATUS" 'link-only mode should allow the link flag after the path'
+  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test.sh' to '$expected_link'?" 'trailing link flag should still prompt for confirmation'
+  assert_symlink_target "$expected_link" "$expected_target" 'trailing link flag should create the expected symlink'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_refuses_missing_local_target() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture_with_input $'y\n' env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -l missing-script
+  assert_status 73 "$RUN_STATUS" 'link-only mode should refuse missing local files'
+  assert_contains "$RUN_STDERR" 'cannot link missing path' 'missing local targets should be explained'
+  assert_not_exists "$home_dir/.local/bin/missing-script" 'missing local targets should not create a global link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_refuses_existing_global_path() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir/.local/bin"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
+  chmod 755 "$sandbox/test"
+  printf 'busy\n' > "$home_dir/.local/bin/test"
+  cd "$sandbox"
+  run_capture_with_input $'y\n' env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -l test
+  assert_status 73 "$RUN_STATUS" 'link-only mode should refuse to overwrite an existing global path'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing global path' 'existing global paths should be explained for link-only mode'
+  assert_file_equals "$home_dir/.local/bin/test" $'busy\n' 'existing global paths should remain unchanged in link-only mode'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_cancellation_refuses_to_link() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
+  chmod 755 "$sandbox/test"
+  cd "$sandbox"
+  run_capture_with_input $'n\n' env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -l test
+  assert_status 73 "$RUN_STATUS" 'link-only mode should stop when confirmation is denied'
+  assert_contains "$RUN_STDERR" 'link cancelled' 'denied confirmation should be explained'
+  assert_not_exists "$home_dir/.local/bin/test" 'denied confirmation should not create a global link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_rejects_global_flag_combination() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
+  chmod 755 "$sandbox/test"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" -l test -g
+  assert_status 64 "$RUN_STATUS" 'link-only mode should reject the global flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --link with --global' 'the rejected global flag combination should be explained'
+  assert_not_exists "$home_dir/.local/bin/test" 'invalid link/global combinations should not create a global link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_link_mode_rejects_strict_flag_combination() {
+  local sandbox
+  local home_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  mkdir -p "$home_dir"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
+  chmod 755 "$sandbox/test"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" "$MKSCRIPT_UNDER_TEST" test -l -s
+  assert_status 64 "$RUN_STATUS" 'link-only mode should reject the strict flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --link with --strict' 'the rejected strict flag combination should be explained'
+  assert_not_exists "$home_dir/.local/bin/test" 'invalid link/strict combinations should not create a global link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
 run_test() {
   local name=$1
 
@@ -220,5 +459,15 @@ run_test test_missing_output_path
 run_test test_invalid_option
 run_test test_missing_parent_directory
 run_test test_directory_target_refusal
+run_test test_global_mode_with_trailing_strict_flag
+run_test test_global_mode_with_trailing_global_flag
+run_test test_global_mode_refuses_existing_global_path
+run_test test_link_mode_links_existing_file
+run_test test_link_mode_links_existing_sh_file_with_trailing_flag
+run_test test_link_mode_refuses_missing_local_target
+run_test test_link_mode_refuses_existing_global_path
+run_test test_link_mode_cancellation_refuses_to_link
+run_test test_link_mode_rejects_global_flag_combination
+run_test test_link_mode_rejects_strict_flag_combination
 
 printf 'All %s tests passed.\n' "$tests_run"

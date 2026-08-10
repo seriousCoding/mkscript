@@ -1,15 +1,18 @@
-.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.0.0" "User Commands"
+.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.0.1" "User Commands"
 .SH NAME
 mkscript \- create executable Bash script skeletons safely
 .SH SYNOPSIS
 .B mkscript
 [\fB\-s\fR|\fB\-\-strict\fR]
+[\fB\-g\fR|\fB\-\-global\fR]
+[\fB\-l\fR|\fB\-\-link\fR]
 [\fB\-\-help\fR]
 [\fB\-\-version\fR]
 .I path
 .SH DESCRIPTION
 .B mkscript
-creates an executable Bash script at the requested path.
+creates an executable Bash script at the requested path or links an existing file into
+.BR ~/.local/bin .
 By default it writes only the standard Bash shebang:
 .PP
 .EX
@@ -28,6 +31,23 @@ also writes:
 set -euo pipefail
 .EE
 .PP
+When
+.B \-g
+or
+.B \-\-global
+is supplied,
+.B mkscript
+also creates a symlink in
+.B ~/.local/bin
+using the script basename.
+.PP
+.B \-l
+or
+.B \-\-link
+links an existing local file into
+.B ~/.local/bin
+after confirmation.
+.PP
 Existing files, symlinks, and directories are never overwritten.
 .SH OPTIONS
 .TP
@@ -35,6 +55,16 @@ Existing files, symlinks, and directories are never overwritten.
 Add
 .B set -euo pipefail
 after the shebang.
+.TP
+.B \-g, \-\-global
+Create a symlink in
+.B ~/.local/bin
+that points to the new script.
+.TP
+.B \-l, \-\-link
+Create only a symlink in
+.B ~/.local/bin
+for an existing local file.
 .TP
 .B \-\-help
 Display usage information and exit successfully.
@@ -61,6 +91,16 @@ mkscript hello-world
 Create a strict-mode script:
 .EX
 mkscript --strict deploy.sh
+.EE
+.TP
+Create a strict-mode script with a global shortcut:
+.EX
+mkscript -g deploy.sh -s
+.EE
+.TP
+Link an existing local file into the global bin directory:
+.EX
+mkscript test.sh -l
 .EE
 .SH AUTHOR
 Richard CodeJunky Townsend

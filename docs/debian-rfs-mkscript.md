@@ -1,6 +1,6 @@
 # RFS Draft for `mkscript`
 
-Subject: `RFS: mkscript/1.0.0-1 -- create executable Bash script skeletons safely`
+Subject: `RFS: mkscript/1.0.1-1 -- create executable Bash script skeletons safely`
 
 Package: `sponsorship-requests`
 Severity: `wishlist`
@@ -18,7 +18,7 @@ Dear mentors,
 I am looking for a sponsor for my package "mkscript":
 
  * Package name     : mkscript
-   Version          : 1.0.0-1
+   Version          : 1.0.1-1
    Upstream contact : Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>
  * URL              : https://github.com/seriousCoding/mkscript
  * License          : MIT
@@ -31,7 +31,8 @@ The source builds the following binary package:
 
 The package provides a small shell-based utility that creates executable
 Bash script files with a standard shebang, refuses unsafe overwrites,
-and optionally adds set -euo pipefail through -s or --strict.
+can optionally add set -euo pipefail through -s or --strict, and can
+create shortcuts in ~/.local/bin for new or existing local scripts.
 
 The package has been tested with:
 
@@ -51,7 +52,9 @@ The package is available on mentors.debian.net:
 
 Changes since the initial packaging:
 
- - initial Debian package
+ - add global shortcut support
+ - add link-only shortcut support
+ - accept supported flags in flexible order
 
 Best regards,
 Richard CodeJunky Townsend
