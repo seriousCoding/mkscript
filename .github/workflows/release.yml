@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential debhelper devscripts dpkg-dev fakeroot lintian rpm rpmlint shellcheck
+
+      - name: Run tests
+        run: make test
+
+      - name: Run shell lint
+        run: make lint
+
+      - name: Build source archive
+        run: ./scripts/build-source-archive.sh
+
+      - name: Build Debian package
+        run: ./scripts/build-deb-native.sh
+
+      - name: Build RPM package
+        run: ./scripts/build-rpm-native.sh
+
+      - name: Write checksums
+        run: ./scripts/write-checksums.sh dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

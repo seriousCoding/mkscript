@@ -1,0 +1,3 @@
+Tests: create-script
+Depends: @, bash
+Restrictions: superficial

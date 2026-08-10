@@ -1,0 +1,20 @@
+Source: mkscript
+Section: utils
+Priority: optional
+Maintainer: Richard CodeJunky Townsend <seriousCoding@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.4
+Rules-Requires-Root: no
+Homepage: https://github.com/seriousCoding/mkscript
+Vcs-Browser: https://github.com/seriousCoding/mkscript
+Vcs-Git: https://github.com/seriousCoding/mkscript.git
+
+Package: mkscript
+Architecture: all
+Depends: ${misc:Depends}
+Description: Create executable Bash script skeletons safely
+ mkscript creates executable Bash script files with a standard
+ #!/usr/bin/env bash shebang.
+ .
+ It refuses to overwrite existing files, symlinks, and directories,
+ and can optionally add set -euo pipefail via -s or --strict.
