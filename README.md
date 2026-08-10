@@ -2,6 +2,46 @@
 
 `mkscript` creates executable Bash script skeletons without overwriting existing files.
 
+Quick links: [`INSTALL.md`](INSTALL.md) | [Public install site](https://seriouscoding.github.io/install/) | [Releases](https://github.com/seriousCoding/mkscript/releases) | [Checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Official packaging guide](docs/official-package-inclusion.md)
+
+## Install
+
+macOS with Homebrew:
+
+```bash
+brew install seriousCoding/tap/mkscript
+```
+
+Debian and Ubuntu:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.deb
+sudo apt install ./mkscript.deb
+```
+
+Fedora:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.rpm
+sudo dnf install ./mkscript.rpm
+```
+
+RHEL, Rocky Linux, AlmaLinux, and other `yum`-based systems:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.rpm
+sudo yum install ./mkscript.rpm
+```
+
+Verify the install:
+
+```bash
+mkscript --version
+mkscript --help
+```
+
+For versioned package links, checksum verification, and platform-specific notes, see [`INSTALL.md`](INSTALL.md) and the [public install page](https://seriouscoding.github.io/install/).
+
 ## Features
 
 - Creates an executable file at the path you request.
@@ -131,14 +171,6 @@ Optional shell linting:
 make lint
 ```
 
-## Install with Homebrew
-
-On macOS for either Apple Silicon or Intel:
-
-```bash
-brew install seriousCoding/tap/mkscript
-```
-
 ## Packaging
 
 Local package builds use Linux tooling. On macOS, the supplied scripts run those builds in Docker.
@@ -205,6 +237,14 @@ RHEL, Rocky Linux, AlmaLinux, and systems using `yum`:
 curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.rpm
 sudo yum install ./mkscript.rpm
 ```
+
+## Documentation
+
+- [`INSTALL.md`](INSTALL.md): direct install commands for macOS, Debian, Ubuntu, Fedora, RHEL, Rocky Linux, and AlmaLinux
+- [https://seriouscoding.github.io/install/](https://seriouscoding.github.io/install/): public install landing page
+- [`docs/official-package-inclusion.md`](docs/official-package-inclusion.md): Debian, Ubuntu, Fedora, and EPEL inclusion path
+- [GitHub releases](https://github.com/seriousCoding/mkscript/releases): packaged downloads and source archives
+- [SHA256SUMS](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS): current release checksums
 
 ## Repository layout
 
