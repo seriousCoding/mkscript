@@ -41,7 +41,7 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 render_debian_changelog() {
   local file=$1
 
@@ -53,7 +53,7 @@ render_debian_changelog() {
   ' "$file"
 }
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 render_rpm_spec() {
   local file=$1
 
@@ -90,7 +90,7 @@ render_rpm_spec() {
   ' "$file"
 }
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 render_man_page() {
   local file=$1
 
