@@ -6,6 +6,7 @@ repo_root=$(
 )
 dist_dir="$repo_root/dist"
 version=$(cat "$repo_root/VERSION")
+archive_path="$dist_dir/mkscript-$version.tar.gz"
 topdir=$(mktemp -d)
 
 cleanup() {
@@ -14,7 +15,9 @@ cleanup() {
 
 trap cleanup EXIT
 
-"$repo_root/scripts/build-source-archive.sh"
+if [ ! -f "$archive_path" ]; then
+  "$repo_root/scripts/build-source-archive.sh"
+fi
 
 mkdir -p "$dist_dir" \
   "$topdir/BUILD" \
@@ -24,7 +27,7 @@ mkdir -p "$dist_dir" \
   "$topdir/SPECS" \
   "$topdir/SRPMS"
 
-cp "$dist_dir/mkscript-$version.tar.gz" "$topdir/SOURCES/"
+cp "$archive_path" "$topdir/SOURCES/"
 cp "$repo_root/packaging/rpm/mkscript.spec" "$topdir/SPECS/"
 
 rpmbuild --nodeps --define "_topdir $topdir" -ba "$topdir/SPECS/mkscript.spec"

@@ -2,7 +2,7 @@ class Mkscript < Formula
   desc "Create executable Bash script stubs with optional strict mode"
   homepage "https://github.com/seriousCoding/mkscript"
   url "https://github.com/seriousCoding/mkscript/releases/download/v1.1.0/mkscript-1.1.0.tar.gz"
-  sha256 "847de36278b501fec62a5bd8727be060bb8707268ec8e76e99f3f8cfffb8a5a2"
+  sha256 "7adfa5765969824b446212356f895f6a4dbce1d366e2f91f9f83abc701616436"
   license "MIT"
 
   def install

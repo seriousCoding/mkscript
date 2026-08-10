@@ -16,12 +16,12 @@ HOMEBREW_NO_AUTO_UPDATE=1 brew tap-new "$tap_name" >/dev/null
 cp "$formula_file" "$tap_dir/Formula/mkscript.rb"
 
 cleanup() {
-  HOMEBREW_NO_AUTO_UPDATE=1 brew uninstall --force mkscript >/dev/null 2>&1 || true
+  HOMEBREW_NO_AUTO_UPDATE=1 brew uninstall --force "$tap_name/mkscript" >/dev/null 2>&1 || true
   HOMEBREW_NO_AUTO_UPDATE=1 brew untap "$tap_name" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
 
 HOMEBREW_NO_AUTO_UPDATE=1 brew install "$tap_name/mkscript"
-HOMEBREW_NO_AUTO_UPDATE=1 brew test mkscript
+HOMEBREW_NO_AUTO_UPDATE=1 brew test "$tap_name/mkscript"
 printf 'Validated Homebrew formula: %s\n' "$formula_file"
