@@ -1,7 +1,7 @@
 Name:           mkscript
-Version:        1.2.0
+Version:        1.3.0
 Release:        1%{?dist}
-Summary:        Create executable Bash script skeletons safely
+Summary:        Create Bash, Terraform, and Ansible starter files safely
 
 License:        MIT
 URL:            https://github.com/seriousCoding/mkscript
@@ -13,12 +13,12 @@ BuildRequires:  make
 Requires:       bash
 
 %description
-mkscript creates executable Bash script files with a standard
-#!/usr/bin/env bash shebang and a default comment header. It refuses to
+mkscript creates Bash, Terraform, and Ansible starter files with a
+default comment header. Bash remains the default template and uses the
+standard portable Bash interpreter header. The tool refuses to
 overwrite existing files, symbolic links, and directories, can
-optionally add a Bash strict-mode line via -s or --strict, can create
-shortcuts for new or existing local scripts, and can check or remove
-those shortcuts later.
+optionally add a Bash strict-mode line via -s or --strict, and can
+create, check, or remove Bash-specific global shortcuts later.
 
 %prep
 %autosetup
@@ -41,6 +41,12 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.3.0-1
+- Add Terraform and Ansible starter file templates
+- Add -mv to move a Bash script and recreate its managed global link
+- Add -f and --files to list matching current-tree files in a table
+- Update docs, packaging metadata, and generated formula coverage for the new modes
+
 * Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.2.0-1
 - Add a default comment header to every newly created script
 - Update package smoke tests and Homebrew formula validation

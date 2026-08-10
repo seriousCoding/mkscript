@@ -35,6 +35,9 @@ cp "$archive_path" "$topdir/SOURCES/"
 cp "$repo_root/packaging/rpm/mkscript.spec" "$topdir/SPECS/"
 
 rpmbuild --nodeps --define "_topdir $topdir" -ba "$topdir/SPECS/mkscript.spec"
-LC_ALL=C LANG=C rpmlint "$topdir/SPECS/mkscript.spec" "$topdir/SRPMS/"*.src.rpm "$topdir/RPMS/noarch/"*.rpm
+LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 rpmlint \
+  "$topdir/SPECS/mkscript.spec" \
+  "$topdir/SRPMS/"*.src.rpm \
+  "$topdir/RPMS/noarch/"*.rpm
 cp "$topdir/RPMS/noarch/"*.rpm "$topdir/SRPMS/"*.src.rpm "$dist_dir"/
 printf 'Built RPM artifacts in %s\n' "$dist_dir"

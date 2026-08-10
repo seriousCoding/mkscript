@@ -39,6 +39,32 @@ assert_contains() {
   esac
 }
 
+assert_matches() {
+  local content=$1
+  local pattern=$2
+  local message=$3
+
+  if ! printf '%s\n' "$content" | grep -Eq -- "$pattern"; then
+    printf 'FAIL: %s\nPattern: %s\nContent: %s\n' "$message" "$pattern" "$content" >&2
+    exit 1
+  fi
+}
+
+assert_grep_count() {
+  local expected=$1
+  local content=$2
+  local pattern=$3
+  local message=$4
+  local actual
+
+  actual=$(printf '%s\n' "$content" | grep -Ec -- "$pattern")
+  if [ "$actual" -ne "$expected" ]; then
+    printf 'FAIL: %s\nExpected matches: %s\nActual matches: %s\nPattern: %s\nContent: %s\n' \
+      "$message" "$expected" "$actual" "$pattern" "$content" >&2
+    exit 1
+  fi
+}
+
 assert_status() {
   local expected=$1
   local actual=$2
@@ -81,6 +107,15 @@ assert_executable() {
   fi
 }
 
+assert_not_executable() {
+  local file=$1
+  local message=$2
+
+  if [ -x "$file" ]; then
+    fail "$message"
+  fi
+}
+
 assert_not_exists() {
   local path=$1
   local message=$2
@@ -102,6 +137,23 @@ assert_symlink_target() {
 
   actual_target=$(readlink "$path")
   assert_equals "$expected_target" "$actual_target" "$message"
+}
+
+file_mode() {
+  local file=$1
+  local mode
+
+  if mode=$(stat -c '%a' "$file" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+
+  if mode=$(stat -f '%Lp' "$file" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+
+  fail "failed to determine file mode for $file"
 }
 
 parent_dir() {
@@ -224,12 +276,12 @@ current_created_date() {
   printf '%s\n' "$created_date"
 }
 
-expected_script_content() {
-  local script_name=$1
+expected_bash_content() {
+  local target_name=$1
   local strict_enabled=$2
 
   printf '#!/usr/bin/env bash\n'
-  printf '# Script: %s\n' "$script_name"
+  printf '# Script: %s\n' "$target_name"
   printf '# Description:\n'
   printf '# Created: %s\n' "$(current_created_date)"
   printf '# Creator: %s\n' "$(current_creator_name)"
@@ -238,15 +290,59 @@ expected_script_content() {
   fi
 }
 
-assert_script_file_equals() {
+expected_terraform_content() {
+  local target_name=$1
+
+  printf '# File: %s\n' "$target_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  printf '\n'
+  printf 'terraform {\n'
+  printf '  required_version = ">= 1.0.0"\n'
+  printf '}\n'
+}
+
+expected_ansible_content() {
+  local target_name=$1
+
+  printf '# File: %s\n' "$target_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  printf '\n'
+  printf -- '---\n'
+  printf -- '- name: %s\n' "$target_name"
+  printf '  hosts: all\n'
+  printf '  gather_facts: false\n'
+  printf '  tasks: []\n'
+}
+
+assert_template_file_equals() {
   local file=$1
-  local script_name=$2
-  local strict_enabled=$3
-  local message=$4
+  local template=$2
+  local target_name=$3
+  local strict_enabled=$4
+  local message=$5
   local expected_file
 
   expected_file=$(mktemp)
-  expected_script_content "$script_name" "$strict_enabled" > "$expected_file"
+
+  case $template in
+    bash)
+      expected_bash_content "$target_name" "$strict_enabled" > "$expected_file"
+      ;;
+    terraform)
+      expected_terraform_content "$target_name" > "$expected_file"
+      ;;
+    ansible)
+      expected_ansible_content "$target_name" > "$expected_file"
+      ;;
+    *)
+      rm -f "$expected_file"
+      fail "unknown template in test expectation: $template"
+      ;;
+  esac
 
   if ! cmp -s "$file" "$expected_file"; then
     printf 'FAIL: %s\n' "$message" >&2
@@ -314,7 +410,7 @@ test_plain_script_creation() {
   run_capture "$MKSCRIPT_UNDER_TEST" hello-world
   assert_status 0 "$RUN_STATUS" 'plain script creation should succeed'
   assert_contains "$RUN_STDOUT" 'Created script: hello-world' 'success output should mention the target path'
-  assert_script_file_equals hello-world hello-world 0 'plain script should include the default header'
+  assert_template_file_equals hello-world bash hello-world 0 'plain script should include the default header'
   assert_executable hello-world 'plain script should be executable'
   cd "$START_DIR"
   rm -rf "$sandbox"
@@ -327,7 +423,7 @@ test_short_strict_mode() {
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -s strict-short
   assert_status 0 "$RUN_STATUS" 'short strict flag should succeed'
-  assert_script_file_equals strict-short strict-short 1 'short strict flag should add strict mode after the default header'
+  assert_template_file_equals strict-short bash strict-short 1 'short strict flag should add strict mode after the default header'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -340,7 +436,134 @@ test_long_strict_mode_with_absolute_path() {
   target="$sandbox/path with spaces.sh"
   run_capture "$MKSCRIPT_UNDER_TEST" --strict "$target"
   assert_status 0 "$RUN_STATUS" 'long strict flag should succeed with an absolute path'
-  assert_script_file_equals "$target" 'path with spaces.sh' 1 'long strict flag should add strict mode after the default header'
+  assert_template_file_equals "$target" bash 'path with spaces.sh' 1 'long strict flag should add strict mode after the default header'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_terraform_template_creation() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --template terraform main.tf
+  assert_status 0 "$RUN_STATUS" 'terraform template creation should succeed'
+  assert_contains "$RUN_STDOUT" 'Created file: main.tf' 'terraform template creation should report the created file'
+  assert_template_file_equals main.tf terraform main.tf 0 'terraform template should match the expected starter content'
+  assert_not_executable main.tf 'terraform template should not be executable'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_terraform_template_creation_with_trailing_flag() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" main.tf -t terraform
+  assert_status 0 "$RUN_STATUS" 'terraform template should allow the template flag after the path'
+  assert_template_file_equals main.tf terraform main.tf 0 'trailing terraform template flag should create the expected starter content'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_ansible_template_creation() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -t ansible site.yml
+  assert_status 0 "$RUN_STATUS" 'ansible template creation should succeed'
+  assert_contains "$RUN_STDOUT" 'Created file: site.yml' 'ansible template creation should report the created file'
+  assert_template_file_equals site.yml ansible site.yml 0 'ansible template should match the expected starter content'
+  assert_not_executable site.yml 'ansible template should not be executable'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_ansible_template_creation_with_trailing_flag() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" site.yml --template ansible
+  assert_status 0 "$RUN_STATUS" 'ansible template should allow the template flag after the path'
+  assert_template_file_equals site.yml ansible site.yml 0 'trailing ansible template flag should create the expected starter content'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_terraform_template_rejects_strict_flag() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --template terraform -s main.tf
+  assert_status 64 "$RUN_STATUS" 'terraform template should reject strict mode'
+  assert_contains "$RUN_STDERR" '--strict is only supported with the bash template' 'terraform strict mode rejection should be explained'
+  assert_not_exists main.tf 'rejected terraform strict mode should not create a file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_ansible_template_rejects_strict_flag() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" site.yml --template ansible --strict
+  assert_status 64 "$RUN_STATUS" 'ansible template should reject strict mode'
+  assert_contains "$RUN_STDERR" '--strict is only supported with the bash template' 'ansible strict mode rejection should be explained'
+  assert_not_exists site.yml 'rejected ansible strict mode should not create a file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_terraform_template_rejects_global_flag() {
+  local sandbox
+  local home_dir
+  local path_value
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -t terraform main.tf -g
+  assert_status 64 "$RUN_STATUS" 'terraform template should reject global mode'
+  assert_contains "$RUN_STDERR" '--global is only supported with the bash template' 'terraform global mode rejection should be explained'
+  assert_not_exists main.tf 'rejected terraform global mode should not create a file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_ansible_template_rejects_global_flag() {
+  local sandbox
+  local home_dir
+  local path_value
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" site.yml -g -t ansible
+  assert_status 64 "$RUN_STATUS" 'ansible template should reject global mode'
+  assert_contains "$RUN_STDERR" '--global is only supported with the bash template' 'ansible global mode rejection should be explained'
+  assert_not_exists site.yml 'rejected ansible global mode should not create a file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_invalid_template_value() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --template yaml hello.yml
+  assert_status 64 "$RUN_STATUS" 'unknown template names should be a usage error'
+  assert_contains "$RUN_STDERR" 'unsupported template: yaml' 'unknown template names should be explained'
+  assert_not_exists hello.yml 'unknown template names should not create a file'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -348,7 +571,13 @@ test_long_strict_mode_with_absolute_path() {
 test_help_output() {
   run_capture "$MKSCRIPT_UNDER_TEST" --help
   assert_status 0 "$RUN_STATUS" 'help should exit successfully'
-  assert_contains "$RUN_STDOUT" 'Usage: mkscript [OPTION]... PATH' 'help should show usage'
+  assert_contains "$RUN_STDOUT" 'Usage:' 'help should show the usage header'
+  assert_contains "$RUN_STDOUT" 'mkscript [OPTION]... PATH' 'help should show the create-path usage form'
+  assert_contains "$RUN_STDOUT" 'mkscript -f|--files' 'help should show the file-listing usage form'
+  assert_contains "$RUN_STDOUT" '-t, --template TEMPLATE' 'help should document template selection'
+  assert_contains "$RUN_STDOUT" '-f, --files' 'help should document file listing mode'
+  assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
+  assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
   assert_contains "$RUN_STDOUT" '-g, --global' 'help should document global mode'
   assert_contains "$RUN_STDOUT" '-l, --link' 'help should document link-only mode'
@@ -425,7 +654,7 @@ test_global_mode_with_trailing_strict_flag() {
   cd "$sandbox"
   run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -g test -s
   assert_status 0 "$RUN_STATUS" 'global mode should allow strict mode after the script name'
-  assert_script_file_equals test test 1 'global strict script should include the default header and strict mode'
+  assert_template_file_equals test bash test 1 'global strict script should include the default header and strict mode'
   assert_symlink_target "$expected_link" "$expected_target" 'global link should point to the created script'
   assert_contains "$RUN_STDOUT" 'Created global link:' 'global mode should report the created link'
   cd "$START_DIR"
@@ -448,7 +677,7 @@ test_global_mode_with_trailing_global_flag() {
   cd "$sandbox"
   run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g
   assert_status 0 "$RUN_STATUS" 'global mode should allow the global flag after the script name'
-  assert_script_file_equals test test 0 'global mode without strict should still include the default header'
+  assert_template_file_equals test bash test 0 'global mode without strict should still include the default header'
   assert_symlink_target "$expected_link" "$expected_target" 'trailing global flag should create the expected symlink'
   cd "$START_DIR"
   rm -rf "$sandbox"
@@ -495,6 +724,413 @@ test_global_mode_falls_back_to_local_bin() {
   run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" fallback -g
   assert_status 0 "$RUN_STATUS" 'global mode should fall back to ~/.local/bin when no preferred path is present'
   assert_symlink_target "$expected_link" "$expected_target" 'fallback global path should point to the created script'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_lists_matching_tree_files() {
+  local sandbox
+  local home_dir
+  local path_value
+  local global_dir
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  global_dir=$(expected_global_dir "$home_dir" "$path_value")
+  mkdir -p "$home_dir" "$sandbox/bin" "$global_dir"
+
+  printf '#!/usr/bin/env bash\n' > "$sandbox/alpha.sh"
+  chmod 644 "$sandbox/alpha.sh"
+
+  printf '#!/usr/bin/env bash\n' > "$sandbox/bin/tool"
+  chmod 755 "$sandbox/bin/tool"
+
+  printf '#!/usr/bin/env bash\n' > "$sandbox/deploy.sh"
+  chmod 755 "$sandbox/deploy.sh"
+
+  printf 'notes\n' > "$sandbox/notes.txt"
+  chmod 644 "$sandbox/notes.txt"
+
+  ln -s "$sandbox/deploy.sh" "$global_dir/deploy.sh"
+  ln -s "$sandbox/notes.txt" "$global_dir/notes.txt"
+
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -f
+  assert_status 0 "$RUN_STATUS" 'files mode should list matching files successfully'
+  assert_matches "$RUN_STDOUT" '^PATH +KIND +EXEC +GLOBAL *$' 'files mode should print a readable table header'
+  assert_matches "$RUN_STDOUT" '^\./alpha\.sh +sh +no +no *$' 'files mode should include non-executable shell files'
+  assert_matches "$RUN_STDOUT" '^\./bin/tool +exec +yes +no *$' 'files mode should include executable non-shell files'
+  assert_matches "$RUN_STDOUT" '^\./deploy\.sh +sh\+exec +yes +yes *$' 'files mode should include globally linked executable shell files'
+  assert_matches "$RUN_STDOUT" '^\./notes\.txt +file +no +yes *$' 'files mode should include global-only local files'
+  assert_grep_count 1 "$RUN_STDOUT" '^\./deploy\.sh +sh\+exec +yes +yes *$' 'files mode should not duplicate files that match multiple rules'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_reports_no_matches() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  printf 'plain text\n' > README
+  run_capture "$MKSCRIPT_UNDER_TEST" --files
+  assert_status 0 "$RUN_STATUS" 'files mode should succeed when no matches are present'
+  assert_equals "No matching script files found under '.'" "$RUN_STDOUT" 'files mode should print a clean no-match message'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_path_argument() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f .
+  assert_status 64 "$RUN_STATUS" 'files mode should reject a path argument'
+  assert_contains "$RUN_STDERR" 'file listing mode does not accept a path' 'files mode should explain rejected path arguments'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_global_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f -g
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the global flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with --global' 'the rejected files/global combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_strict_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --files -s
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the strict flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with --strict' 'the rejected files/strict combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_link_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --files -l
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the link flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with --link' 'the rejected files/link combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_check_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f -c
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the check flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with -c' 'the rejected files/check combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_remove_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --files -r
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the remove flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with -r' 'the rejected files/remove combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_move_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f -mv source target
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the move flag combination'
+  assert_contains "$RUN_STDERR" 'file listing mode does not accept a path' 'the rejected files/move combination should stop before interpreting move paths'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_template_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --files --template bash
+  assert_status 64 "$RUN_STATUS" 'files mode should reject the template combination'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with --template' 'the rejected files/template combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_preserves_permissions_without_link() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" test
+  assert_status 0 "$RUN_STATUS" 'setup script creation for move mode should succeed'
+  chmod 700 test
+
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  assert_status 0 "$RUN_STATUS" 'move mode should move an unlinked script successfully'
+  assert_contains "$RUN_STDOUT" 'Moved script: test -> deploy' 'move mode should report the source and target paths'
+  assert_not_exists test 'move mode should remove the original source path'
+  assert_template_file_equals deploy bash test 0 'move mode should preserve file contents'
+  assert_equals '700' "$(file_mode deploy)" 'move mode should restore the original permission mode'
+  assert_executable deploy 'move mode should keep the target executable when the source was executable'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_recreates_link_for_renamed_script() {
+  local sandbox
+  local home_dir
+  local path_value
+  local old_link
+  local new_link
+  local new_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g
+  assert_status 0 "$RUN_STATUS" 'setup linked script creation should succeed'
+
+  old_link=$(expected_global_link_path "$home_dir" "$path_value" test)
+  new_link=$(expected_global_link_path "$home_dir" "$path_value" deploy)
+  new_target=$(cd "$sandbox" && pwd -P)/deploy
+
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  assert_status 0 "$RUN_STATUS" 'move mode should relink a renamed global script'
+  assert_contains "$RUN_STDOUT" 'Moved script: test -> deploy' 'move mode should report the renamed move'
+  assert_contains "$RUN_STDOUT" "Removed global link: $old_link" 'move mode should report the removed old link'
+  assert_contains "$RUN_STDOUT" 'Created global link:' 'move mode should report the recreated link'
+  assert_not_exists test 'move mode should remove the original source after relinking'
+  assert_not_exists "$old_link" 'move mode should remove the old global link path after rename'
+  assert_template_file_equals deploy bash test 0 'move mode should preserve the original script file contents when renaming'
+  assert_symlink_target "$new_link" "$new_target" 'move mode should create a new global link for the target name'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_updates_link_for_same_basename_in_new_directory() {
+  local sandbox
+  local home_dir
+  local path_value
+  local link_path
+  local new_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir" "$sandbox/scripts"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g
+  assert_status 0 "$RUN_STATUS" 'setup linked script creation for same-basename move should succeed'
+
+  link_path=$(expected_global_link_path "$home_dir" "$path_value" test)
+  new_target=$(cd "$sandbox" && pwd -P)/scripts/test
+
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test scripts/test
+  assert_status 0 "$RUN_STATUS" 'move mode should support keeping the same basename in a new directory'
+  assert_contains "$RUN_STDOUT" "Removed global link: $link_path" 'same-basename move should report the removed old link'
+  assert_symlink_target "$link_path" "$new_target" 'same-basename move should recreate the same global link path against the new file location'
+  assert_not_exists test 'same-basename move should remove the original source path'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_creates_new_link_with_global_flag() {
+  local sandbox
+  local home_dir
+  local path_value
+  local new_link
+  local new_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" test
+  assert_status 0 "$RUN_STATUS" 'setup unlinked script creation should succeed'
+
+  new_link=$(expected_global_link_path "$home_dir" "$path_value" deploy)
+  new_target=$(cd "$sandbox" && pwd -P)/deploy
+
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy -g
+  assert_status 0 "$RUN_STATUS" 'move mode should allow -g to create a new global link'
+  assert_symlink_target "$new_link" "$new_target" 'move mode with -g should create the expected new global link'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_missing_source() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv missing deploy
+  assert_status 73 "$RUN_STATUS" 'move mode should reject missing source paths'
+  assert_contains "$RUN_STDERR" 'cannot move missing path' 'missing move sources should be explained'
+  assert_not_exists deploy 'missing move sources should not create a target file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_directory_source() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/testdir"
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv testdir deploy
+  assert_status 73 "$RUN_STATUS" 'move mode should reject directory sources'
+  assert_contains "$RUN_STDERR" 'cannot move a directory' 'directory move sources should be explained'
+  assert_not_exists deploy 'directory move sources should not create a target file'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_existing_target() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" test
+  assert_status 0 "$RUN_STATUS" 'setup script creation for target-conflict move test should succeed'
+  printf 'busy\n' > deploy
+
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  assert_status 73 "$RUN_STATUS" 'move mode should reject existing target paths'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing path' 'existing move targets should be explained'
+  assert_not_exists "$sandbox/deploy.tmp" 'move mode should not create any extra file while target validation fails'
+  assert_executable test 'existing target conflicts should leave the source script untouched'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_existing_target_global_path() {
+  local sandbox
+  local home_dir
+  local path_value
+  local old_link
+  local conflicting_link
+  local conflicting_dir
+  local original_target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g
+  assert_status 0 "$RUN_STATUS" 'setup linked script creation for target-link conflict should succeed'
+
+  old_link=$(expected_global_link_path "$home_dir" "$path_value" test)
+  conflicting_link=$(expected_global_link_path "$home_dir" "$path_value" deploy)
+  conflicting_dir=$(parent_dir "$conflicting_link")
+  original_target=$(cd "$sandbox" && pwd -P)/test
+  mkdir -p "$conflicting_dir"
+  printf 'busy\n' > "$conflicting_link"
+
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  assert_status 73 "$RUN_STATUS" 'move mode should reject existing target global paths'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing global path' 'target global link conflicts should be explained'
+  if [ ! -f test ]; then
+    fail 'target global link conflicts should leave the source file in place'
+  fi
+  assert_symlink_target "$old_link" "$original_target" 'target global link conflicts should leave the old global link untouched'
+  assert_file_equals "$conflicting_link" $'busy\n' 'target global link conflicts should not overwrite the conflicting global path'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_strict_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy -s
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the strict flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine -mv with --strict' 'the rejected move/strict combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_link_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy -l
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the link-only flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine -mv with --link' 'the rejected move/link combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_check_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy -c
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the check flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine -mv with -c' 'the rejected move/check combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_remove_flag_combination() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy -r
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the remove flag combination'
+  assert_contains "$RUN_STDERR" 'cannot combine -mv with -r' 'the rejected move/remove combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_terraform_template() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy --template terraform
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the terraform template'
+  assert_contains "$RUN_STDERR" '-mv is only supported with the bash template' 'the rejected move/terraform combination should be explained'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_rejects_ansible_template() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy --template ansible
+  assert_status 64 "$RUN_STATUS" 'move mode should reject the ansible template'
+  assert_contains "$RUN_STDERR" '-mv is only supported with the bash template' 'the rejected move/ansible combination should be explained'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -867,6 +1503,15 @@ run_test() {
 run_test test_plain_script_creation
 run_test test_short_strict_mode
 run_test test_long_strict_mode_with_absolute_path
+run_test test_terraform_template_creation
+run_test test_terraform_template_creation_with_trailing_flag
+run_test test_ansible_template_creation
+run_test test_ansible_template_creation_with_trailing_flag
+run_test test_terraform_template_rejects_strict_flag
+run_test test_ansible_template_rejects_strict_flag
+run_test test_terraform_template_rejects_global_flag
+run_test test_ansible_template_rejects_global_flag
+run_test test_invalid_template_value
 run_test test_help_output
 run_test test_version_output
 run_test test_overwrite_refusal
@@ -878,6 +1523,30 @@ run_test test_global_mode_with_trailing_strict_flag
 run_test test_global_mode_with_trailing_global_flag
 run_test test_global_mode_refuses_existing_global_path
 run_test test_global_mode_falls_back_to_local_bin
+run_test test_files_mode_lists_matching_tree_files
+run_test test_files_mode_reports_no_matches
+run_test test_files_mode_rejects_path_argument
+run_test test_files_mode_rejects_global_flag_combination
+run_test test_files_mode_rejects_strict_flag_combination
+run_test test_files_mode_rejects_link_flag_combination
+run_test test_files_mode_rejects_check_flag_combination
+run_test test_files_mode_rejects_remove_flag_combination
+run_test test_files_mode_rejects_move_flag_combination
+run_test test_files_mode_rejects_template_combination
+run_test test_move_mode_preserves_permissions_without_link
+run_test test_move_mode_recreates_link_for_renamed_script
+run_test test_move_mode_updates_link_for_same_basename_in_new_directory
+run_test test_move_mode_creates_new_link_with_global_flag
+run_test test_move_mode_rejects_missing_source
+run_test test_move_mode_rejects_directory_source
+run_test test_move_mode_rejects_existing_target
+run_test test_move_mode_rejects_existing_target_global_path
+run_test test_move_mode_rejects_strict_flag_combination
+run_test test_move_mode_rejects_link_flag_combination
+run_test test_move_mode_rejects_check_flag_combination
+run_test test_move_mode_rejects_remove_flag_combination
+run_test test_move_mode_rejects_terraform_template
+run_test test_move_mode_rejects_ansible_template
 run_test test_link_mode_links_existing_file
 run_test test_link_mode_links_existing_sh_file_with_trailing_flag
 run_test test_link_mode_refuses_missing_local_target

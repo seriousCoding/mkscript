@@ -8,6 +8,9 @@ repo_root=$(
 # shellcheck source=scripts/release-vars.sh
 source "$repo_root/scripts/release-vars.sh"
 
+export LC_ALL=C
+export LANG=C
+
 rm -rf "$repo_root/build" "$repo_root/dist"
 mkdir -p "$repo_root/dist"
 

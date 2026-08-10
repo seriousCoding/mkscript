@@ -1,3 +1,12 @@
+mkscript (1.3.0-1) unstable; urgency=medium
+
+  * Add Terraform and Ansible starter file templates.
+  * Add -mv to move a Bash script and recreate its managed global link.
+  * Add -f and --files to list matching current-tree files in a table.
+  * Update help text, docs, and packaging metadata for the new modes.
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 10 Aug 2026 21:15:00 +0000
+
 mkscript (1.2.0-1) unstable; urgency=medium
 
   * Add a default comment header to every newly created script.

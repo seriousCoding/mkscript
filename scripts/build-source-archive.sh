@@ -42,5 +42,10 @@ done
 
 "$archive_root/scripts/sync-release-metadata.sh" "$archive_root"
 
-tar -C "$stage_dir" -czf "$repo_root/dist/$MKSCRIPT_SOURCE_ARCHIVE" "mkscript-$MKSCRIPT_VERSION"
+if command -v xattr >/dev/null 2>&1; then
+  xattr -cr "$archive_root"
+fi
+
+LC_ALL=C LANG=C COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \
+  tar -C "$stage_dir" -czf "$repo_root/dist/$MKSCRIPT_SOURCE_ARCHIVE" "mkscript-$MKSCRIPT_VERSION"
 printf 'Built source archive: %s\n' "$repo_root/dist/$MKSCRIPT_SOURCE_ARCHIVE"

@@ -1,8 +1,14 @@
-.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.2.0" "User Commands"
+.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.3.0" "User Commands"
 .SH NAME
-mkscript \- create executable Bash script skeletons safely
+mkscript \- create Bash, Terraform, and Ansible starter files safely
 .SH SYNOPSIS
 .B mkscript
+[\fB\-f\fR|\fB\-\-files\fR]
+[\fB\-\-help\fR]
+[\fB\-\-version\fR]
+.br
+.B mkscript
+[\fB\-t\fR|\fB\-\-template\fR \fItemplate\fR]
 [\fB\-s\fR|\fB\-\-strict\fR]
 [\fB\-g\fR|\fB\-\-global\fR]
 [\fB\-l\fR|\fB\-\-link\fR]
@@ -11,11 +17,19 @@ mkscript \- create executable Bash script skeletons safely
 [\fB\-\-help\fR]
 [\fB\-\-version\fR]
 .I path
+.br
+.B mkscript
+[\fB\-g\fR|\fB\-\-global\fR]
+\fB\-mv\fR
+.I source
+.I target
 .SH DESCRIPTION
 .B mkscript
-creates an executable Bash script at the requested path or manages a global link in the
-user's detected bin directory.
-By default it writes the standard Bash shebang followed by a small comment header
+creates a new file at the requested path from a Bash, Terraform, or Ansible starter template.
+The default template is Bash.
+For Bash files,
+.B mkscript
+writes the standard shebang followed by a small comment header
 with the script name, a blank description line, the local creation date, and the
 creator login name:
 .PP
@@ -26,6 +40,13 @@ creator login name:
 # Created: YYYY-MM-DD
 # Creator: login-user
 .EE
+.PP
+For Terraform and Ansible files,
+.B mkscript
+writes the same metadata header with
+.B File
+in place of
+.BR Script .
 .PP
 When
 .B \-s
@@ -48,6 +69,17 @@ is supplied,
 also creates a symlink in the detected user bin directory
 using the script basename.
 .PP
+.B \-s ,
+.BR \-\-strict ,
+.BR \-g ,
+.BR \-\-global ,
+.BR \-l ,
+.BR \-\-link ,
+.BR \-c ,
+and
+.B \-r
+are supported only for the Bash template.
+.PP
 .B \-l
 or
 .B \-\-link
@@ -59,6 +91,20 @@ checks whether the expected global symlink already exists and prints its path wh
 .PP
 .B \-r
 removes the expected global symlink after confirmation.
+.PP
+.B \-f
+or
+.B \-\-files
+scans the current directory tree and prints a table of matching local files.
+A file is listed when it ends with
+.BR .sh ,
+is executable, or is the local target of a managed global symlink.
+.PP
+.B \-mv
+moves an existing local Bash script to a new path, preserves its permission mode,
+and recreates the global shortcut when the source was linked already or when
+.B \-g
+is supplied.
 .PP
 Existing files, symlinks, and directories are never overwritten.
 .PP
@@ -72,24 +118,40 @@ before falling back to
 .BR ~/.local/bin .
 .SH OPTIONS
 .TP
+.B \-t, \-\-template
+Select the file template.
+Supported values are
+.BR bash ,
+.BR terraform ,
+and
+.BR ansible .
+.TP
+.B \-f, \-\-files
+List matching local files under the current directory tree in a table with
+path, kind, executable state, and global-link state.
+.TP
 .B \-s, \-\-strict
 Add
 .B set -euo pipefail
-after the shebang.
+after the shebang for the Bash template.
 .TP
 .B \-g, \-\-global
 Create a symlink in the detected user bin directory
-that points to the new script.
+that points to the new Bash script.
 .TP
 .B \-l, \-\-link
 Create only a symlink in the detected user bin directory
-for an existing local file.
+for an existing local Bash file.
 .TP
 .B \-c
-Check whether the expected global symlink exists and print its path when it does.
+Check whether the expected global Bash symlink exists and print its path when it does.
 .TP
 .B \-r
-Remove the expected global symlink after confirmation.
+Remove the expected global Bash symlink after confirmation.
+.TP
+.B \-mv
+Move an existing local Bash script to a new path, preserve its permission mode,
+and recreate the global shortcut when appropriate.
 .TP
 .B \-\-help
 Display usage information and exit successfully.
@@ -116,6 +178,16 @@ Create a simple script in the current directory:
 mkscript hello-world
 .EE
 .TP
+Create a Terraform starter file:
+.EX
+mkscript --template terraform main.tf
+.EE
+.TP
+Create an Ansible playbook starter file:
+.EX
+mkscript site.yml --template ansible
+.EE
+.TP
 Create a strict-mode script:
 .EX
 mkscript --strict deploy.sh
@@ -124,6 +196,16 @@ mkscript --strict deploy.sh
 Create a strict-mode script with a global shortcut:
 .EX
 mkscript -g deploy.sh -s
+.EE
+.TP
+List matching files under the current tree:
+.EX
+mkscript -f
+.EE
+.TP
+Move an existing Bash script and recreate its global shortcut if needed:
+.EX
+mkscript -mv test deploy
 .EE
 .TP
 Link an existing local file into the global bin directory:

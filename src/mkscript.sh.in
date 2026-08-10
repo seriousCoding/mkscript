@@ -8,18 +8,26 @@ readonly EX_CANTCREAT=73
 
 usage() {
   cat <<'EOF'
-Usage: mkscript [OPTION]... PATH
+Usage:
+  mkscript [OPTION]... PATH
+  mkscript -mv [--global] SOURCE TARGET
+  mkscript -f|--files
 
-Create an executable Bash script at PATH or manage a global link in a user bin directory.
+Create a new file from a Bash, Terraform, or Ansible template.
+Global link management applies to Bash templates only.
 
 Options:
-  -s, --strict   add "set -euo pipefail" after the shebang
-  -g, --global   create a global symlink for the new script
-  -l, --link     create only a global symlink for an existing file
-  -c             check whether the expected global symlink exists
-  -r             remove the expected global symlink after confirmation
-      --help     display this help and exit
-      --version  output version information and exit
+  -t, --template TEMPLATE
+                  use bash, terraform, or ansible
+  -f, --files     list matching files under the current tree
+  -mv             move an existing Bash script to a new path
+  -s, --strict    add "set -euo pipefail" after the shebang
+  -g, --global    create a global symlink for the new Bash script
+  -l, --link      create only a global symlink for an existing Bash file
+  -c              check whether the expected global Bash symlink exists
+  -r              remove the expected global Bash symlink after confirmation
+      --help      display this help and exit
+      --version   output version information and exit
 EOF
 }
 
@@ -36,6 +44,29 @@ fail_usage() {
 fail_create() {
   printf '%s: %s\n' "$MKSCRIPT_NAME" "$1" >&2
   exit "$EX_CANTCREAT"
+}
+
+validate_template() {
+  case $1 in
+    bash|terraform|ansible)
+      ;;
+    *)
+      fail_usage "unsupported template: $1 (expected bash, terraform, or ansible)"
+      ;;
+  esac
+}
+
+path_in_tree() {
+  local path=$1
+  local tree_root=$2
+
+  case $path in
+    "$tree_root"|"$tree_root"/*)
+      return 0
+      ;;
+  esac
+
+  return 1
 }
 
 parent_dir() {
@@ -104,6 +135,30 @@ absolute_path() {
       printf '%s/%s\n' "$resolved_parent" "$base"
     fi
   )
+}
+
+resolve_link_target_path() {
+  local link_path=$1
+  local link_target
+  local link_parent
+
+  link_target=$(readlink "$link_path" 2>/dev/null || true)
+  if [ -z "$link_target" ]; then
+    return 1
+  fi
+
+  case $link_target in
+    /*)
+      absolute_path "$link_target"
+      ;;
+    *)
+      link_parent=$(parent_dir "$link_path")
+      (
+        cd "$link_parent" >/dev/null 2>&1 || exit 1
+        absolute_path "$link_target"
+      )
+      ;;
+  esac
 }
 
 platform_name() {
@@ -256,6 +311,22 @@ validate_link_source() {
   fi
 }
 
+validate_move_source() {
+  local source=$1
+
+  if [ -d "$source" ]; then
+    fail_create "cannot move a directory: $source"
+  fi
+
+  if [ ! -e "$source" ] && [ ! -L "$source" ]; then
+    fail_create "cannot move missing path: $source"
+  fi
+
+  if [ -L "$source" ]; then
+    fail_create "cannot move a symlink source: $source"
+  fi
+}
+
 validate_existing_global_link() {
   local link_path=$1
 
@@ -270,12 +341,12 @@ validate_existing_global_link() {
   return 1
 }
 
-write_skeleton() {
-  local destination=$1
-  local strict_enabled=$2
+write_header() {
+  local target_name=$1
+  local template=$2
   local creator
   local created_date
-  local script_name
+  local label
 
   creator=$(id -un 2>/dev/null || true)
   if [ -z "$creator" ]; then
@@ -290,18 +361,244 @@ write_skeleton() {
     fail_create 'failed to determine current date'
   fi
 
-  script_name=$(base_name "$destination")
+  case $template in
+    bash)
+      label='Script'
+      ;;
+    *)
+      label='File'
+      ;;
+  esac
 
   {
-    printf '#!/usr/bin/env bash\n'
-    printf '# Script: %s\n' "$script_name"
+    printf '# %s: %s\n' "$label" "$target_name"
     printf '# Description:\n'
     printf '# Created: %s\n' "$created_date"
     printf '# Creator: %s\n' "$creator"
-    if [ "$strict_enabled" -eq 1 ]; then
-      printf 'set -euo pipefail\n'
+  }
+}
+
+write_template() {
+  local destination=$1
+  local template=$2
+  local strict_enabled=$3
+  local target_name
+
+  target_name=$(base_name "$destination")
+
+  case $template in
+    bash)
+      {
+        printf '#!/usr/bin/env bash\n'
+        write_header "$target_name" bash
+        if [ "$strict_enabled" -eq 1 ]; then
+          printf 'set -euo pipefail\n'
+        fi
+      } > "$destination"
+      ;;
+    terraform)
+      {
+        write_header "$target_name" terraform
+        printf '\n'
+        printf 'terraform {\n'
+        printf '  required_version = ">= 1.0.0"\n'
+        printf '}\n'
+      } > "$destination"
+      ;;
+    ansible)
+      {
+        write_header "$target_name" ansible
+        printf '\n'
+        printf -- '---\n'
+        printf -- '- name: %s\n' "$target_name"
+        printf '  hosts: all\n'
+        printf '  gather_facts: false\n'
+        printf '  tasks: []\n'
+      } > "$destination"
+      ;;
+  esac
+}
+
+template_mode() {
+  case $1 in
+    bash)
+      printf '755\n'
+      ;;
+    *)
+      printf '644\n'
+      ;;
+  esac
+}
+
+permission_mode() {
+  local target=$1
+  local mode
+
+  if mode=$(stat -c '%a' "$target" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+
+  if mode=$(stat -f '%Lp' "$target" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+
+  fail_create "failed to determine permissions: $target"
+}
+
+kind_for_file() {
+  local is_shell=$1
+  local is_executable=$2
+
+  if [ "$is_shell" -eq 1 ] && [ "$is_executable" -eq 1 ]; then
+    printf 'sh+exec\n'
+    return 0
+  fi
+
+  if [ "$is_shell" -eq 1 ]; then
+    printf 'sh\n'
+    return 0
+  fi
+
+  if [ "$is_executable" -eq 1 ]; then
+    printf 'exec\n'
+    return 0
+  fi
+
+  printf 'file\n'
+}
+
+list_script_files() {
+  local tree_root
+  local global_dir
+  local absolute_global_dir=''
+  local global_targets_file
+  local rows_file
+  local path
+  local absolute_file
+  local absolute_target
+  local is_shell
+  local is_executable
+  local is_global
+  local kind
+  local exec_label
+  local global_label
+
+  tree_root=$(pwd -P)
+  global_dir=$(global_bin_dir)
+  global_targets_file=$(mktemp)
+  rows_file=$(mktemp)
+
+  if [ -e "$global_dir" ] || [ -L "$global_dir" ]; then
+    if [ ! -d "$global_dir" ]; then
+      rm -f "$global_targets_file" "$rows_file"
+      fail_create "global bin directory is not a directory: $global_dir"
     fi
-  } > "$destination"
+  fi
+
+  if [ -d "$global_dir" ]; then
+    absolute_global_dir=$(
+      cd "$global_dir" >/dev/null 2>&1 && pwd -P
+    )
+
+    while IFS= read -r path; do
+      absolute_target=$(resolve_link_target_path "$path") || continue
+
+      if path_in_tree "$absolute_target" "$tree_root"; then
+        printf '%s\n' "$absolute_target" >> "$global_targets_file"
+      fi
+    done < <(find "$global_dir" -mindepth 1 -maxdepth 1 -type l -print | LC_ALL=C sort)
+  fi
+
+  if [ -s "$global_targets_file" ]; then
+    LC_ALL=C sort -u "$global_targets_file" -o "$global_targets_file"
+  fi
+
+  while IFS= read -r path; do
+    if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+      continue
+    fi
+
+    if [ -L "$path" ] && [ ! -e "$path" ]; then
+      continue
+    fi
+
+    is_shell=0
+    case $path in
+      *.sh)
+        is_shell=1
+        ;;
+    esac
+
+    is_executable=0
+    if [ -x "$path" ]; then
+      is_executable=1
+    fi
+
+    absolute_file=$(absolute_path "$path") || {
+      rm -f "$global_targets_file" "$rows_file"
+      fail_create "failed to resolve file path: $path"
+    }
+
+    if [ -n "$absolute_global_dir" ] && [ -L "$path" ] && path_in_tree "$absolute_file" "$absolute_global_dir"; then
+      continue
+    fi
+
+    is_global=0
+    if [ -s "$global_targets_file" ] && grep -Fqx "$absolute_file" "$global_targets_file"; then
+      is_global=1
+    fi
+
+    if [ "$is_shell" -eq 0 ] && [ "$is_executable" -eq 0 ] && [ "$is_global" -eq 0 ]; then
+      continue
+    fi
+
+    kind=$(kind_for_file "$is_shell" "$is_executable")
+    exec_label='no'
+    global_label='no'
+
+    if [ "$is_executable" -eq 1 ]; then
+      exec_label='yes'
+    fi
+
+    if [ "$is_global" -eq 1 ]; then
+      global_label='yes'
+    fi
+
+    printf '%s\t%s\t%s\t%s\n' "$path" "$kind" "$exec_label" "$global_label" >> "$rows_file"
+  done < <(find . \( -type f -o -type l \) -print | LC_ALL=C sort)
+
+  if [ ! -s "$rows_file" ]; then
+    rm -f "$global_targets_file" "$rows_file"
+    printf "No matching script files found under '.'\n"
+    return 0
+  fi
+
+  awk -F '\t' '
+    BEGIN {
+      path_width = length("PATH")
+      kind_width = length("KIND")
+    }
+    {
+      rows[NR] = $0
+      if (length($1) > path_width) {
+        path_width = length($1)
+      }
+      if (length($2) > kind_width) {
+        kind_width = length($2)
+      }
+    }
+    END {
+      printf "%-*s  %-*s  %-4s  %-6s\n", path_width, "PATH", kind_width, "KIND", "EXEC", "GLOBAL"
+      for (row_number = 1; row_number <= NR; row_number++) {
+        split(rows[row_number], fields, "\t")
+        printf "%-*s  %-*s  %-4s  %-6s\n", path_width, fields[1], kind_width, fields[2], fields[3], fields[4]
+      }
+    }
+  ' "$rows_file"
+
+  rm -f "$global_targets_file" "$rows_file"
 }
 
 cleanup_target() {
@@ -312,25 +609,28 @@ cleanup_target() {
   rm -f "$command_target"
 }
 
-create_script() {
+create_target() {
   local target=$1
-  local strict_enabled=$2
+  local template=$2
+  local strict_enabled=$3
   local command_target
+  local mode
 
   command_target=$(safe_command_path "$target")
+  mode=$(template_mode "$template")
 
   if ! ( set -o noclobber; : > "$target" ) 2>/dev/null; then
     fail_create "refusing to overwrite existing path: $target"
   fi
 
-  if ! write_skeleton "$target" "$strict_enabled"; then
+  if ! write_template "$target" "$template" "$strict_enabled"; then
     cleanup_target "$target"
-    fail_create "failed to write script: $target"
+    fail_create "failed to write file: $target"
   fi
 
-  if ! chmod 755 "$command_target"; then
+  if ! chmod "$mode" "$command_target"; then
     cleanup_target "$target"
-    fail_create "failed to mark script executable: $target"
+    fail_create "failed to set target permissions: $target"
   fi
 }
 
@@ -342,6 +642,35 @@ create_global_link() {
   global_dir=$(parent_dir "$link_path")
 
   mkdir -p "$global_dir" && ln -s "$absolute_target" "$link_path"
+}
+
+managed_global_link_path() {
+  local target=$1
+  local expected_absolute=$2
+  local link_path
+  local link_target
+
+  link_path=$(global_link_path "$target")
+
+  if [ -L "$link_path" ]; then
+    link_target=$(readlink "$link_path" 2>/dev/null || true)
+    if [ -z "$link_target" ]; then
+      fail_create "failed to read global link target: $link_path"
+    fi
+
+    if [ "$link_target" != "$expected_absolute" ]; then
+      fail_create "global link does not point to source path: $link_path"
+    fi
+
+    printf '%s\n' "$link_path"
+    return 0
+  fi
+
+  if [ -e "$link_path" ]; then
+    fail_create "global path exists but is not a symlink: $link_path"
+  fi
+
+  return 1
 }
 
 confirm_link_action() {
@@ -423,13 +752,86 @@ remove_global_link() {
   printf "Removed link for '%s' from '%s'\n" "$target_name" "$link_path"
 }
 
+move_script() {
+  local source=$1
+  local target=$2
+  local force_global_link=$3
+  local source_absolute
+  local target_absolute
+  local source_mode
+  local source_link_path=''
+  local source_had_link=0
+  local recreate_link=0
+  local target_link_path=''
+  local command_target
+
+  validate_move_source "$source"
+  validate_target "$target"
+
+  source_absolute=$(absolute_path "$source") || fail_create "failed to resolve absolute path: $source"
+  source_mode=$(permission_mode "$source")
+
+  if source_link_path=$(managed_global_link_path "$source" "$source_absolute"); then
+    source_had_link=1
+  fi
+
+  if [ "$source_had_link" -eq 1 ] || [ "$force_global_link" -eq 1 ]; then
+    recreate_link=1
+    target_link_path=$(global_link_path "$target")
+
+    if [ "$source_had_link" -eq 1 ] && [ "$source_link_path" = "$target_link_path" ]; then
+      :
+    else
+      validate_global_link "$target_link_path"
+    fi
+  fi
+
+  if ! mv "$source" "$target"; then
+    fail_create "failed to move script: $source -> $target"
+  fi
+
+  command_target=$(safe_command_path "$target")
+
+  if ! chmod "$source_mode" "$command_target"; then
+    fail_create "script moved to '$target' but failed to restore permissions"
+  fi
+
+  target_absolute=$(absolute_path "$target") || fail_create "script moved to '$target' but failed to resolve the new absolute path"
+
+  printf 'Moved script: %s -> %s\n' "$source" "$target"
+
+  if [ "$source_had_link" -eq 1 ]; then
+    if ! rm -f "$source_link_path"; then
+      fail_create "script moved to '$target' but failed to remove old global link: $source_link_path"
+    fi
+
+    printf 'Removed global link: %s\n' "$source_link_path"
+  fi
+
+  if [ "$recreate_link" -eq 1 ]; then
+    if ! create_global_link "$target_absolute" "$target_link_path"; then
+      fail_create "script moved to '$target' but failed to create global link: $target_link_path"
+    fi
+
+    printf 'Created global link: %s -> %s\n' "$target_link_path" "$target_absolute"
+  fi
+}
+
 main() {
   local strict_enabled=0
   local global_enabled=0
   local link_only=0
   local check_only=0
   local remove_only=0
+  local files_only=0
+  local move_only=0
   local literal_args=0
+  local template='bash'
+  local template_specified=0
+  local positional_count=0
+  local first_path=''
+  local second_path=''
+  local source=''
   local target=''
   local link_path=''
   local absolute_target=''
@@ -437,6 +839,34 @@ main() {
   while [ $# -gt 0 ]; do
     if [ "$literal_args" -eq 0 ]; then
       case $1 in
+        -t|--template)
+          if [ $# -lt 2 ] || [ -z "${2-}" ]; then
+            fail_usage "missing value for --template"
+          fi
+          template_specified=1
+          template=$2
+          shift 2
+          continue
+          ;;
+        --template=*)
+          template=${1#*=}
+          if [ -z "$template" ]; then
+            fail_usage "missing value for --template"
+          fi
+          template_specified=1
+          shift
+          continue
+          ;;
+        -f|--files)
+          files_only=1
+          shift
+          continue
+          ;;
+        -mv)
+          move_only=1
+          shift
+          continue
+          ;;
         -s|--strict)
           strict_enabled=1
           shift
@@ -481,16 +911,44 @@ main() {
       esac
     fi
 
-    if [ -n "$target" ]; then
-      fail_usage "expected exactly one output path"
-    fi
-
-    target=$1
+    positional_count=$((positional_count + 1))
+    case $positional_count in
+      1)
+        first_path=$1
+        ;;
+      2)
+        second_path=$1
+        ;;
+      *)
+        fail_usage "too many paths provided"
+        ;;
+    esac
     shift
   done
 
-  if [ -z "$target" ]; then
-    fail_usage "missing output path"
+  validate_template "$template"
+
+  if [ "$files_only" -eq 1 ]; then
+    if [ "$positional_count" -ne 0 ]; then
+      fail_usage "file listing mode does not accept a path"
+    fi
+  elif [ "$move_only" -eq 1 ]; then
+    if [ "$positional_count" -ne 2 ]; then
+      fail_usage "move mode requires source and target paths"
+    fi
+
+    source=$first_path
+    target=$second_path
+  else
+    if [ "$positional_count" -eq 0 ]; then
+      fail_usage "missing output path"
+    fi
+
+    if [ "$positional_count" -ne 1 ]; then
+      fail_usage "expected exactly one output path"
+    fi
+
+    target=$first_path
   fi
 
   if [ "$link_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
@@ -529,6 +987,84 @@ main() {
     fail_usage "cannot combine -r with --strict"
   fi
 
+  if [ "$move_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "cannot combine -mv with --strict"
+  fi
+
+  if [ "$move_only" -eq 1 ] && [ "$link_only" -eq 1 ]; then
+    fail_usage "cannot combine -mv with --link"
+  fi
+
+  if [ "$move_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
+    fail_usage "cannot combine -mv with -c"
+  fi
+
+  if [ "$move_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
+    fail_usage "cannot combine -mv with -r"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
+    fail_usage "cannot combine --files with --global"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "cannot combine --files with --strict"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$link_only" -eq 1 ]; then
+    fail_usage "cannot combine --files with --link"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
+    fail_usage "cannot combine --files with -c"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
+    fail_usage "cannot combine --files with -r"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$move_only" -eq 1 ]; then
+    fail_usage "cannot combine --files with -mv"
+  fi
+
+  if [ "$files_only" -eq 1 ] && [ "$template_specified" -eq 1 ]; then
+    fail_usage "cannot combine --files with --template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "--strict is only supported with the bash template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$global_enabled" -eq 1 ]; then
+    fail_usage "--global is only supported with the bash template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$link_only" -eq 1 ]; then
+    fail_usage "--link is only supported with the bash template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$check_only" -eq 1 ]; then
+    fail_usage "-c is only supported with the bash template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$remove_only" -eq 1 ]; then
+    fail_usage "-r is only supported with the bash template"
+  fi
+
+  if [ "$template" != 'bash' ] && [ "$move_only" -eq 1 ]; then
+    fail_usage "-mv is only supported with the bash template"
+  fi
+
+  if [ "$files_only" -eq 1 ]; then
+    list_script_files
+    exit 0
+  fi
+
+  if [ "$move_only" -eq 1 ]; then
+    move_script "$source" "$target" "$global_enabled"
+    exit 0
+  fi
+
   if [ "$check_only" -eq 1 ]; then
     check_global_link "$target"
   fi
@@ -561,7 +1097,7 @@ main() {
     absolute_target=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
   fi
 
-  create_script "$target" "$strict_enabled"
+  create_target "$target" "$template" "$strict_enabled"
 
   if [ "$global_enabled" -eq 1 ]; then
     if ! create_global_link "$absolute_target" "$link_path"; then
@@ -570,7 +1106,11 @@ main() {
     fi
   fi
 
-  printf 'Created script: %s\n' "$target"
+  if [ "$template" = 'bash' ]; then
+    printf 'Created script: %s\n' "$target"
+  else
+    printf 'Created file: %s\n' "$target"
+  fi
   if [ "$global_enabled" -eq 1 ]; then
     printf 'Created global link: %s -> %s\n' "$link_path" "$absolute_target"
   fi

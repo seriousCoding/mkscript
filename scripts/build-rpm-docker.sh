@@ -11,6 +11,6 @@ docker run --rm \
   fedora:42 \
   bash -lc '
     set -euo pipefail
-    dnf -y install make rpm-build rpmdevtools rpmlint tar gzip
+    dnf -y install make rpm-build rpmdevtools rpmlint tar gzip glibc-langpack-en
     ./scripts/build-rpm-native.sh
   '
