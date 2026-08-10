@@ -38,7 +38,7 @@ brew install seriousCoding/tap/mkscript
 EOF
 fi
 
-if git -C "$worktree" diff --quiet -- Formula/mkscript.rb README.md; then
+if [ -z "$(git -C "$worktree" status --short -- Formula/mkscript.rb README.md)" ]; then
   printf 'Homebrew tap is already up to date.\n'
   exit 0
 fi
