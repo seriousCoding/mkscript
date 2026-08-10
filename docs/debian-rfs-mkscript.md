@@ -30,9 +30,10 @@ The source builds the following binary package:
   mkscript - create executable Bash script skeletons safely
 
 The package provides a small shell-based utility that creates executable
-Bash script files with a standard shebang, refuses unsafe overwrites,
-can optionally add set -euo pipefail through -s or --strict, and can
-create shortcuts in ~/.local/bin for new or existing local scripts.
+Bash script files with a standard shebang and default comment header,
+refuses unsafe overwrites, can optionally add set -euo pipefail through
+-s or --strict, and can create shortcuts in ~/.local/bin for new or
+existing local scripts.
 
 The package has been tested with:
 

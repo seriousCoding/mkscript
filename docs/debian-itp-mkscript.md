@@ -18,7 +18,9 @@ Owner: `Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>`
   Description     : create executable Bash script skeletons safely
 
  mkscript creates executable Bash script files with a standard
- #!/usr/bin/env bash shebang.
+ #!/usr/bin/env bash shebang and a small comment header that records
+ the script name, a blank description field, the creation date, and
+ the creator login name.
  .
  It refuses to overwrite existing files, symlinks, and directories,
  and can optionally add set -euo pipefail via -s or --strict.

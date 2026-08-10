@@ -273,9 +273,31 @@ validate_existing_global_link() {
 write_skeleton() {
   local destination=$1
   local strict_enabled=$2
+  local creator
+  local created_date
+  local script_name
+
+  creator=$(id -un 2>/dev/null || true)
+  if [ -z "$creator" ]; then
+    creator=${LOGNAME:-${USER:-}}
+  fi
+  if [ -z "$creator" ]; then
+    fail_create 'failed to determine creator name'
+  fi
+
+  created_date=$(date '+%Y-%m-%d' 2>/dev/null || true)
+  if [ -z "$created_date" ]; then
+    fail_create 'failed to determine current date'
+  fi
+
+  script_name=$(base_name "$destination")
 
   {
     printf '#!/usr/bin/env bash\n'
+    printf '# Script: %s\n' "$script_name"
+    printf '# Description:\n'
+    printf '# Created: %s\n' "$created_date"
+    printf '# Creator: %s\n' "$creator"
     if [ "$strict_enabled" -eq 1 ]; then
       printf 'set -euo pipefail\n'
     fi

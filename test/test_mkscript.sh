@@ -199,6 +199,68 @@ RUN_STATUS=0
 RUN_STDOUT=''
 RUN_STDERR=''
 
+current_creator_name() {
+  local creator
+
+  creator=$(id -un 2>/dev/null || true)
+  if [ -z "$creator" ]; then
+    creator=${LOGNAME:-${USER:-}}
+  fi
+  if [ -z "$creator" ]; then
+    fail 'failed to determine creator name for test expectations'
+  fi
+
+  printf '%s\n' "$creator"
+}
+
+current_created_date() {
+  local created_date
+
+  created_date=$(date '+%Y-%m-%d' 2>/dev/null || true)
+  if [ -z "$created_date" ]; then
+    fail 'failed to determine current date for test expectations'
+  fi
+
+  printf '%s\n' "$created_date"
+}
+
+expected_script_content() {
+  local script_name=$1
+  local strict_enabled=$2
+
+  printf '#!/usr/bin/env bash\n'
+  printf '# Script: %s\n' "$script_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  if [ "$strict_enabled" -eq 1 ]; then
+    printf 'set -euo pipefail\n'
+  fi
+}
+
+assert_script_file_equals() {
+  local file=$1
+  local script_name=$2
+  local strict_enabled=$3
+  local message=$4
+  local expected_file
+
+  expected_file=$(mktemp)
+  expected_script_content "$script_name" "$strict_enabled" > "$expected_file"
+
+  if ! cmp -s "$file" "$expected_file"; then
+    printf 'FAIL: %s\n' "$message" >&2
+    printf 'Expected file contents:\n' >&2
+    cat "$expected_file" >&2
+    printf 'Actual file contents:\n' >&2
+    cat "$file" >&2
+    rm -f "$expected_file"
+    exit 1
+  fi
+
+  rm -f "$expected_file"
+}
+
 run_capture() {
   local stdout_file
   local stderr_file
@@ -252,7 +314,7 @@ test_plain_script_creation() {
   run_capture "$MKSCRIPT_UNDER_TEST" hello-world
   assert_status 0 "$RUN_STATUS" 'plain script creation should succeed'
   assert_contains "$RUN_STDOUT" 'Created script: hello-world' 'success output should mention the target path'
-  assert_file_equals hello-world $'#!/usr/bin/env bash\n' 'plain script should only contain the shebang'
+  assert_script_file_equals hello-world hello-world 0 'plain script should include the default header'
   assert_executable hello-world 'plain script should be executable'
   cd "$START_DIR"
   rm -rf "$sandbox"
@@ -265,7 +327,7 @@ test_short_strict_mode() {
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -s strict-short
   assert_status 0 "$RUN_STATUS" 'short strict flag should succeed'
-  assert_file_equals strict-short $'#!/usr/bin/env bash\nset -euo pipefail\n' 'short strict flag should add strict mode'
+  assert_script_file_equals strict-short strict-short 1 'short strict flag should add strict mode after the default header'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -278,7 +340,7 @@ test_long_strict_mode_with_absolute_path() {
   target="$sandbox/path with spaces.sh"
   run_capture "$MKSCRIPT_UNDER_TEST" --strict "$target"
   assert_status 0 "$RUN_STATUS" 'long strict flag should succeed with an absolute path'
-  assert_file_equals "$target" $'#!/usr/bin/env bash\nset -euo pipefail\n' 'long strict flag should add strict mode'
+  assert_script_file_equals "$target" 'path with spaces.sh' 1 'long strict flag should add strict mode after the default header'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -363,7 +425,7 @@ test_global_mode_with_trailing_strict_flag() {
   cd "$sandbox"
   run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -g test -s
   assert_status 0 "$RUN_STATUS" 'global mode should allow strict mode after the script name'
-  assert_file_equals test $'#!/usr/bin/env bash\nset -euo pipefail\n' 'global strict script should include strict mode'
+  assert_script_file_equals test test 1 'global strict script should include the default header and strict mode'
   assert_symlink_target "$expected_link" "$expected_target" 'global link should point to the created script'
   assert_contains "$RUN_STDOUT" 'Created global link:' 'global mode should report the created link'
   cd "$START_DIR"
@@ -386,7 +448,7 @@ test_global_mode_with_trailing_global_flag() {
   cd "$sandbox"
   run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g
   assert_status 0 "$RUN_STATUS" 'global mode should allow the global flag after the script name'
-  assert_file_equals test $'#!/usr/bin/env bash\n' 'global mode without strict should only contain the shebang'
+  assert_script_file_equals test test 0 'global mode without strict should still include the default header'
   assert_symlink_target "$expected_link" "$expected_target" 'trailing global flag should create the expected symlink'
   cd "$START_DIR"
   rm -rf "$sandbox"

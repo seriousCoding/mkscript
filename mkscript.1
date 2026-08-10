@@ -15,10 +15,16 @@ mkscript \- create executable Bash script skeletons safely
 .B mkscript
 creates an executable Bash script at the requested path or manages a global link in the
 user's detected bin directory.
-By default it writes only the standard Bash shebang:
+By default it writes the standard Bash shebang followed by a small comment header
+with the script name, a blank description line, the local creation date, and the
+creator login name:
 .PP
 .EX
 #!/usr/bin/env bash
+# Script: hello-world
+# Description:
+# Created: YYYY-MM-DD
+# Creator: login-user
 .EE
 .PP
 When

@@ -45,7 +45,7 @@ For versioned package links, checksum verification, and platform-specific notes,
 ## Features
 
 - Creates an executable file at the path you request.
-- Writes `#!/usr/bin/env bash` by default.
+- Writes `#!/usr/bin/env bash` plus a default comment header with script name, blank description, creation date, and creator.
 - Adds `set -euo pipefail` when you pass `-s` or `--strict`.
 - Optionally creates a global shortcut in your detected user bin directory when you pass `-g` or `--global`.
 - Can link an existing local script into that same user bin directory when you pass `-l` or `--link`.
@@ -64,6 +64,10 @@ This creates `./hello-world` with:
 
 ```bash
 #!/usr/bin/env bash
+# Script: hello-world
+# Description:
+# Created: YYYY-MM-DD
+# Creator: login-user
 ```
 
 Strict mode:
@@ -76,6 +80,10 @@ This creates:
 
 ```bash
 #!/usr/bin/env bash
+# Script: deploy.sh
+# Description:
+# Created: YYYY-MM-DD
+# Creator: login-user
 set -euo pipefail
 ```
 

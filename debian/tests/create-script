@@ -9,20 +9,40 @@ cleanup() {
 
 trap cleanup EXIT
 
+current_creator=$(id -un 2>/dev/null || true)
+if [ -z "$current_creator" ]; then
+  current_creator=${LOGNAME:-${USER:-}}
+fi
+current_date=$(date '+%Y-%m-%d')
+
+expected_script() {
+  local script_name=$1
+  local strict_enabled=$2
+
+  printf '#!/usr/bin/env bash\n'
+  printf '# Script: %s\n' "$script_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$current_date"
+  printf '# Creator: %s\n' "$current_creator"
+  if [ "$strict_enabled" = 'yes' ]; then
+    printf 'set -euo pipefail\n'
+  fi
+}
+
 cd "$sandbox"
 mkscript demo
 test -x demo
-diff -u <(printf '#!/usr/bin/env bash\n') demo
+diff -u <(expected_script demo no) demo
 
 mkscript --strict strict-demo
 test -x strict-demo
-diff -u <(printf '#!/usr/bin/env bash\nset -euo pipefail\n') strict-demo
+diff -u <(expected_script strict-demo yes) strict-demo
 
 home_dir="$sandbox/home"
 mkdir -p "$home_dir"
 
-env HOME="$home_dir" mkscript demo -g
-test -L "$home_dir/.local/bin/demo"
-env HOME="$home_dir" mkscript demo -c | grep "$home_dir/.local/bin/demo"
-printf 'yes\n' | env HOME="$home_dir" mkscript -r demo
-test ! -e "$home_dir/.local/bin/demo"
+env HOME="$home_dir" mkscript global-demo -g
+test -L "$home_dir/.local/bin/global-demo"
+env HOME="$home_dir" mkscript global-demo -c | grep "$home_dir/.local/bin/global-demo"
+printf 'yes\n' | env HOME="$home_dir" mkscript -r global-demo
+test ! -e "$home_dir/.local/bin/global-demo"

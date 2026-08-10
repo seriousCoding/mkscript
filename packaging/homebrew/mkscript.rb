@@ -11,9 +11,9 @@ class Mkscript < Formula
 
   test do
     system bin/"mkscript", "demo"
-    assert_equal "#!/usr/bin/env bash\n", (testpath/"demo").read
+    assert_match(/\A#!\/usr\/bin\/env bash\n# Script: demo\n# Description:\n# Created: \d{4}-\d{2}-\d{2}\n# Creator: .+\n\z/, (testpath/"demo").read)
 
     system bin/"mkscript", "-s", "strict-demo"
-    assert_equal "#!/usr/bin/env bash\nset -euo pipefail\n", (testpath/"strict-demo").read
+    assert_match(/\A#!\/usr\/bin\/env bash\n# Script: strict-demo\n# Description:\n# Created: \d{4}-\d{2}-\d{2}\n# Creator: .+\nset -euo pipefail\n\z/, (testpath/"strict-demo").read)
   end
 end
