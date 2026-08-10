@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.0] - 2026-08-10
+
+### Added
+
+- `-c` to check whether the expected global link exists and print its path.
+- `-r` to remove an existing global link after confirmation.
+- Homebrew formula generation, tap publishing automation, and macOS formula validation in CI.
+
+### Changed
+
+- macOS now prefers a personal local bin directory already on `PATH` before falling back to `~/.local/bin`.
+- Documentation, packaging metadata, and tests now cover create, link, check, and remove workflows.
+
 ## [1.0.1] - 2026-08-10
 
 ### Added

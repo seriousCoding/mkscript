@@ -35,6 +35,23 @@ jobs:
       - name: Run shell lint
         run: make lint
 
+      - name: Build source archive for Homebrew
+        if: runner.os == 'macOS'
+        run: ./scripts/build-source-archive.sh
+
+      - name: Render local Homebrew formula
+        if: runner.os == 'macOS'
+        run: |
+          version=$(cat VERSION)
+          archive_path="$PWD/dist/mkscript-$version.tar.gz"
+          archive_sha=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+          mkdir -p build/homebrew
+          ./scripts/render-homebrew-formula.sh "file://$archive_path" "$archive_sha" build/homebrew/mkscript.rb
+
+      - name: Install Homebrew formula
+        if: runner.os == 'macOS'
+        run: ./scripts/test-homebrew-formula.sh ./build/homebrew/mkscript.rb
+
   package:
     runs-on: ubuntu-latest
     needs: test

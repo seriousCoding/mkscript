@@ -10,12 +10,14 @@ usage() {
   cat <<'EOF'
 Usage: mkscript [OPTION]... PATH
 
-Create an executable Bash script at PATH or link an existing file into "$HOME/.local/bin".
+Create an executable Bash script at PATH or manage a global link in a user bin directory.
 
 Options:
   -s, --strict   add "set -euo pipefail" after the shebang
-  -g, --global   create a symlink in "$HOME/.local/bin"
-  -l, --link     create only a symlink for an existing file
+  -g, --global   create a global symlink for the new script
+  -l, --link     create only a global symlink for an existing file
+  -c             check whether the expected global symlink exists
+  -r             remove the expected global symlink after confirmation
       --help     display this help and exit
       --version  output version information and exit
 EOF
@@ -104,17 +106,96 @@ absolute_path() {
   )
 }
 
-global_link_path() {
-  local target=$1
-  local home_dir=${HOME:-}
-  local base
+platform_name() {
+  uname -s 2>/dev/null || printf '\n'
+}
 
-  if [ -z "$home_dir" ]; then
-    fail_create 'HOME is not set; cannot create a global link'
+path_has_entry() {
+  local needle=$1
+  local path_value=${PATH:-}
+  local path_entry
+  local old_ifs=$IFS
+
+  IFS=:
+  for path_entry in $path_value; do
+    if [ "$path_entry" = "$needle" ]; then
+      IFS=$old_ifs
+      return 0
+    fi
+  done
+  IFS=$old_ifs
+
+  return 1
+}
+
+darwin_global_bin_dir() {
+  local home_dir=$1
+  local path_value=${PATH:-}
+  local path_entry
+  local parent_name
+  local old_ifs=$IFS
+
+  if path_has_entry "$home_dir/.local/bin"; then
+    printf '%s/.local/bin\n' "$home_dir"
+    return 0
   fi
 
+  if path_has_entry "$home_dir/bin"; then
+    printf '%s/bin\n' "$home_dir"
+    return 0
+  fi
+
+  IFS=:
+  for path_entry in $path_value; do
+    case $path_entry in
+      "$home_dir"/*/bin)
+        if [ -e "$path_entry" ] && [ ! -d "$path_entry" ]; then
+          continue
+        fi
+
+        parent_name=${path_entry%/bin}
+        parent_name=${parent_name##*/}
+
+        case $parent_name in
+          *local*)
+            IFS=$old_ifs
+            printf '%s\n' "$path_entry"
+            return 0
+            ;;
+        esac
+        ;;
+    esac
+  done
+  IFS=$old_ifs
+
+  return 1
+}
+
+global_bin_dir() {
+  local home_dir=${HOME:-}
+  local system_name
+
+  if [ -z "$home_dir" ]; then
+    fail_create 'HOME is not set; cannot determine the global bin directory'
+  fi
+
+  system_name=$(platform_name)
+
+  if [ "$system_name" = 'Darwin' ]; then
+    if darwin_global_bin_dir "$home_dir"; then
+      return 0
+    fi
+  fi
+
+  printf '%s/.local/bin\n' "$home_dir"
+}
+
+global_link_path() {
+  local target=$1
+  local base
+
   base=$(base_name "$target")
-  printf '%s/.local/bin/%s\n' "$home_dir" "$base"
+  printf '%s/%s\n' "$(global_bin_dir)" "$base"
 }
 
 validate_target() {
@@ -173,6 +254,20 @@ validate_link_source() {
   if [ ! -e "$target" ] && [ ! -L "$target" ]; then
     fail_create "cannot link missing path: $target"
   fi
+}
+
+validate_existing_global_link() {
+  local link_path=$1
+
+  if [ -L "$link_path" ]; then
+    return 0
+  fi
+
+  if [ -e "$link_path" ]; then
+    fail_create "global path exists but is not a symlink: $link_path"
+  fi
+
+  return 1
 }
 
 write_skeleton() {
@@ -247,10 +342,71 @@ confirm_link_action() {
   esac
 }
 
+confirm_remove_action() {
+  local target_name=$1
+  local link_path=$2
+  local reply
+
+  printf "Are you sure you want to remove link for '%s' from '%s'? [y/N] " "$target_name" "$link_path"
+
+  if ! IFS= read -r reply; then
+    fail_create "link removal cancelled: $target_name"
+  fi
+
+  case $reply in
+    [Yy]|[Yy][Ee][Ss])
+      ;;
+    *)
+      fail_create "link removal cancelled: $target_name"
+      ;;
+  esac
+}
+
+check_global_link() {
+  local target=$1
+  local target_name
+  local link_path
+
+  target_name=$(base_name "$target")
+  link_path=$(global_link_path "$target")
+
+  if validate_existing_global_link "$link_path"; then
+    printf "Global link for '%s': '%s'\n" "$target_name" "$link_path"
+    exit 0
+  fi
+
+  printf "No global link exists for '%s' at '%s'\n" "$target_name" "$link_path"
+  exit 1
+}
+
+remove_global_link() {
+  local target=$1
+  local target_name
+  local link_path
+
+  target_name=$(base_name "$target")
+  link_path=$(global_link_path "$target")
+
+  if ! validate_existing_global_link "$link_path"; then
+    printf "No global link exists for '%s' at '%s'\n" "$target_name" "$link_path"
+    exit 1
+  fi
+
+  confirm_remove_action "$target_name" "$link_path"
+
+  if ! rm -f "$link_path"; then
+    fail_create "failed to remove global link: $link_path"
+  fi
+
+  printf "Removed link for '%s' from '%s'\n" "$target_name" "$link_path"
+}
+
 main() {
   local strict_enabled=0
   local global_enabled=0
   local link_only=0
+  local check_only=0
+  local remove_only=0
   local literal_args=0
   local target=''
   local link_path=''
@@ -271,6 +427,16 @@ main() {
           ;;
         -l|--link)
           link_only=1
+          shift
+          continue
+          ;;
+        -c)
+          check_only=1
+          shift
+          continue
+          ;;
+        -r)
+          remove_only=1
           shift
           continue
           ;;
@@ -311,6 +477,43 @@ main() {
 
   if [ "$link_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
     fail_usage "cannot combine --link with --strict"
+  fi
+
+  if [ "$link_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
+    fail_usage "cannot combine --link with -c"
+  fi
+
+  if [ "$link_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
+    fail_usage "cannot combine --link with -r"
+  fi
+
+  if [ "$check_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
+    fail_usage "cannot combine -c with -r"
+  fi
+
+  if [ "$check_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
+    fail_usage "cannot combine -c with --global"
+  fi
+
+  if [ "$check_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "cannot combine -c with --strict"
+  fi
+
+  if [ "$remove_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
+    fail_usage "cannot combine -r with --global"
+  fi
+
+  if [ "$remove_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
+    fail_usage "cannot combine -r with --strict"
+  fi
+
+  if [ "$check_only" -eq 1 ]; then
+    check_global_link "$target"
+  fi
+
+  if [ "$remove_only" -eq 1 ]; then
+    remove_global_link "$target"
+    exit 0
   fi
 
   if [ "$link_only" -eq 1 ]; then

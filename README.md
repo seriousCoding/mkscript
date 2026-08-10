@@ -7,10 +7,12 @@
 - Creates an executable file at the path you request.
 - Writes `#!/usr/bin/env bash` by default.
 - Adds `set -euo pipefail` when you pass `-s` or `--strict`.
-- Optionally creates a global shortcut in `~/.local/bin` when you pass `-g` or `--global`.
-- Can link an existing local script into `~/.local/bin` when you pass `-l` or `--link`.
+- Optionally creates a global shortcut in your detected user bin directory when you pass `-g` or `--global`.
+- Can link an existing local script into that same user bin directory when you pass `-l` or `--link`.
+- Can check an expected global shortcut with `-c`.
+- Can remove an existing global shortcut with `-r`.
 - Refuses to overwrite existing files, symlinks, or directories.
-- Ships with tests, a man page, Debian packaging, RPM packaging, and GitHub Actions automation.
+- Ships with tests, a man page, Debian packaging, RPM packaging, Homebrew support, and GitHub Actions automation.
 
 ## Usage
 
@@ -63,6 +65,24 @@ mkscript test.sh -l
 
 `mkscript` asks for confirmation before it creates the shortcut.
 
+Check whether a global shortcut already exists:
+
+```bash
+mkscript -c test
+mkscript test -c
+```
+
+If the shortcut exists, `mkscript` prints its path and exits successfully.
+
+Remove an existing global shortcut later:
+
+```bash
+mkscript -r test
+mkscript test -r
+```
+
+`mkscript` asks for confirmation before it removes the shortcut.
+
 Other commands:
 
 ```bash
@@ -74,14 +94,16 @@ mkscript --version
 
 - `0`: success
 - `64`: command-line usage error
+- `1`: checked or removal target was not present
 - `73`: could not create the requested script safely
 
 ## Global mode notes
 
 - `-g` and `--global` use the script basename for the shortcut name.
-- `mkscript` creates the shortcut in `~/.local/bin`.
+- On Linux, `mkscript` uses `~/.local/bin` for global shortcuts.
+- On macOS, `mkscript` prefers a personal `*local*/bin` or `~/bin` entry already on `PATH`, then falls back to `~/.local/bin`.
 - Existing files or symlinks at that global path are never overwritten.
-- `~/.local/bin` needs to be on your `PATH` if you want to run the shortcut directly.
+- The chosen global bin directory needs to be on your `PATH` if you want to run the shortcut directly.
 
 ## Link-only mode notes
 
@@ -89,6 +111,13 @@ mkscript --version
 - The local target must already exist and must not be a directory.
 - `mkscript` prompts with `Are you sure you want to link source path '<source-path>' to '<bin-location>'?`.
 - `-l` cannot be combined with `-g` or `-s`.
+
+## Link management notes
+
+- `-c` checks for the expected global shortcut and prints the resolved shortcut path when it exists.
+- `-r` prompts with `Are you sure you want to remove link for '<script-name>' from '<bin-location>'?`.
+- `-r` only removes symlinks; it refuses to delete regular files or directories at the global path.
+- `-c` and `-r` cannot be combined with `-g`, `-l`, or `-s`.
 
 ## Build and test
 
@@ -102,6 +131,14 @@ Optional shell linting:
 make lint
 ```
 
+## Install with Homebrew
+
+On macOS for either Apple Silicon or Intel:
+
+```bash
+brew install seriousCoding/tap/mkscript
+```
+
 ## Packaging
 
 Local package builds use Linux tooling. On macOS, the supplied scripts run those builds in Docker.
@@ -112,16 +149,16 @@ make package
 
 Artifacts are written to `dist/`:
 
-- `mkscript-1.0.1.tar.gz`
-- `mkscript_1.0.1-1_all.deb`
-- `mkscript-1.0.1-1.fc42.noarch.rpm`
-- `mkscript-1.0.1-1.fc42.src.rpm`
+- `mkscript-1.1.0.tar.gz`
+- `mkscript_1.1.0-1_all.deb`
+- `mkscript-1.1.0-1.fc42.noarch.rpm`
+- `mkscript-1.1.0-1.fc42.src.rpm`
 - `mkscript.tar.gz`
 - `mkscript.deb`
 - `mkscript.rpm`
 - `mkscript.src.rpm`
-- `mkscript_1.0.1-1_arm64.buildinfo`
-- `mkscript_1.0.1-1_arm64.changes`
+- `mkscript.rb`
+- Debian build metadata and `.changes` files
 - checksums and build metadata
 
 ## Install from release artifacts
@@ -129,19 +166,19 @@ Artifacts are written to `dist/`:
 Debian and Ubuntu:
 
 ```bash
-sudo apt install ./mkscript_1.0.1-1_all.deb
+sudo apt install ./mkscript_1.1.0-1_all.deb
 ```
 
 Fedora:
 
 ```bash
-sudo dnf install ./mkscript-1.0.1-1.fc42.noarch.rpm
+sudo dnf install ./mkscript-1.1.0-1.fc42.noarch.rpm
 ```
 
 RHEL, Rocky Linux, AlmaLinux, and systems using `yum`:
 
 ```bash
-sudo yum install ./mkscript-1.0.1-1.fc42.noarch.rpm
+sudo yum install ./mkscript-1.1.0-1.fc42.noarch.rpm
 ```
 
 ## Stable GitHub download URLs
@@ -181,4 +218,4 @@ sudo yum install ./mkscript.rpm
 ## Release automation
 
 - `.github/workflows/ci.yml` runs tests and shell linting.
-- `.github/workflows/release.yml` builds release artifacts and publishes them for version tags such as `v1.0.1`.
+- `.github/workflows/release.yml` builds release artifacts, publishes them for version tags such as `v1.1.0`, and can update the Homebrew tap when a token is configured.

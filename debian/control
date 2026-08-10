@@ -17,5 +17,6 @@ Description: Create executable Bash script skeletons safely
  #!/usr/bin/env bash shebang.
  .
  It refuses to overwrite existing files, symlinks, and directories,
- can optionally add set -euo pipefail via -s or --strict, and can
- create shortcuts in ~/.local/bin for new or existing local scripts.
+ can optionally add set -euo pipefail via -s or --strict, can create
+ shortcuts for new or existing local scripts, and can check or remove
+ those shortcuts later.

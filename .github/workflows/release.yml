@@ -29,6 +29,16 @@ jobs:
       - name: Build source archive
         run: ./scripts/build-source-archive.sh
 
+      - name: Render Homebrew formula
+        run: |
+          version=$(cat VERSION)
+          archive_path="$PWD/dist/mkscript-$version.tar.gz"
+          archive_sha=$(sha256sum "$archive_path" | awk '{print $1}')
+          ./scripts/render-homebrew-formula.sh \
+            "https://github.com/seriousCoding/mkscript/releases/download/v$version/mkscript-$version.tar.gz" \
+            "$archive_sha" \
+            dist/mkscript.rb
+
       - name: Build Debian package
         run: ./scripts/build-deb-native.sh
 
@@ -46,3 +56,9 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+      - name: Publish Homebrew tap
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: ./scripts/publish-homebrew-tap.sh dist/mkscript.rb seriousCoding/homebrew-tap

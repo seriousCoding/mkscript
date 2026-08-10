@@ -1,3 +1,12 @@
+mkscript (1.1.0-1) unstable; urgency=medium
+
+  * Add -c to check the expected global link path.
+  * Add -r to remove an existing global link after confirmation.
+  * Prefer a suitable personal macOS bin directory already on PATH.
+  * Add Homebrew formula generation and documentation.
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 10 Aug 2026 13:40:00 +0000
+
 mkscript (1.0.1-1) unstable; urgency=medium
 
   * Add global shortcut creation with -g and --global.

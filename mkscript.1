@@ -1,4 +1,4 @@
-.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.0.1" "User Commands"
+.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.1.0" "User Commands"
 .SH NAME
 mkscript \- create executable Bash script skeletons safely
 .SH SYNOPSIS
@@ -6,13 +6,15 @@ mkscript \- create executable Bash script skeletons safely
 [\fB\-s\fR|\fB\-\-strict\fR]
 [\fB\-g\fR|\fB\-\-global\fR]
 [\fB\-l\fR|\fB\-\-link\fR]
+[\fB\-c\fR]
+[\fB\-r\fR]
 [\fB\-\-help\fR]
 [\fB\-\-version\fR]
 .I path
 .SH DESCRIPTION
 .B mkscript
-creates an executable Bash script at the requested path or links an existing file into
-.BR ~/.local/bin .
+creates an executable Bash script at the requested path or manages a global link in the
+user's detected bin directory.
 By default it writes only the standard Bash shebang:
 .PP
 .EX
@@ -37,18 +39,31 @@ or
 .B \-\-global
 is supplied,
 .B mkscript
-also creates a symlink in
-.B ~/.local/bin
+also creates a symlink in the detected user bin directory
 using the script basename.
 .PP
 .B \-l
 or
 .B \-\-link
-links an existing local file into
-.B ~/.local/bin
+links an existing local file into that same user bin directory
 after confirmation.
 .PP
+.B \-c
+checks whether the expected global symlink already exists and prints its path when it does.
+.PP
+.B \-r
+removes the expected global symlink after confirmation.
+.PP
 Existing files, symlinks, and directories are never overwritten.
+.PP
+On Linux,
+.B mkscript
+uses
+.BR ~/.local/bin .
+On macOS, it prefers a personal local bin directory already on
+.B PATH
+before falling back to
+.BR ~/.local/bin .
 .SH OPTIONS
 .TP
 .B \-s, \-\-strict
@@ -57,14 +72,18 @@ Add
 after the shebang.
 .TP
 .B \-g, \-\-global
-Create a symlink in
-.B ~/.local/bin
+Create a symlink in the detected user bin directory
 that points to the new script.
 .TP
 .B \-l, \-\-link
-Create only a symlink in
-.B ~/.local/bin
+Create only a symlink in the detected user bin directory
 for an existing local file.
+.TP
+.B \-c
+Check whether the expected global symlink exists and print its path when it does.
+.TP
+.B \-r
+Remove the expected global symlink after confirmation.
 .TP
 .B \-\-help
 Display usage information and exit successfully.
@@ -78,6 +97,9 @@ Success.
 .TP
 .B 64
 Command-line usage error.
+.TP
+.B 1
+The requested link was not present for check or removal mode.
 .TP
 .B 73
 The target script could not be created safely.
@@ -101,6 +123,16 @@ mkscript -g deploy.sh -s
 Link an existing local file into the global bin directory:
 .EX
 mkscript test.sh -l
+.EE
+.TP
+Check a global link:
+.EX
+mkscript test -c
+.EE
+.TP
+Remove a global link:
+.EX
+mkscript -r test
 .EE
 .SH AUTHOR
 Richard CodeJunky Townsend
