@@ -38,5 +38,5 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
-* Mon Aug 10 2026 Richard CodeJunky Townsend <seriousCoding@users.noreply.github.com> - 1.0.0-1
+* Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.0.0-1
 - Initial package

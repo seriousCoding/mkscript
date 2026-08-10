@@ -9,7 +9,7 @@ MANDIR ?= $(PREFIX)/share/man
 DOCDIR ?= $(PREFIX)/share/doc/mkscript
 BUILD_BIN := $(BUILD_DIR)/bin/mkscript
 
-.PHONY: all build clean install lint package package-deb package-rpm release-artifacts test
+.PHONY: all build clean install lint package package-deb package-deb-source package-rpm release-artifacts test
 
 all: build
 
@@ -31,11 +31,13 @@ install: build
 	install -m 0755 $(BUILD_BIN) $(DESTDIR)$(BINDIR)/mkscript
 	install -m 0644 mkscript.1 $(DESTDIR)$(MANDIR)/man1/mkscript.1
 	install -m 0644 README.md $(DESTDIR)$(DOCDIR)/README.md
-	install -m 0644 CHANGELOG.md $(DESTDIR)$(DOCDIR)/CHANGELOG.md
 	install -m 0644 LICENSE $(DESTDIR)$(DOCDIR)/LICENSE
 
 package-deb:
 	./scripts/build-deb-docker.sh
+
+package-deb-source:
+	ALLOW_UNSIGNED=1 ./scripts/build-deb-source.sh
 
 package-rpm:
 	./scripts/build-rpm-docker.sh

@@ -1,7 +1,7 @@
 Source: mkscript
 Section: utils
 Priority: optional
-Maintainer: Richard CodeJunky Townsend <seriousCoding@users.noreply.github.com>
+Maintainer: Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.7.4
 Rules-Requires-Root: no
