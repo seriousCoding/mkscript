@@ -19,6 +19,12 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Load release variables
+        run: ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+
+      - name: Validate release metadata
+        run: ./scripts/validate-release-metadata.sh
+
       - name: Install shellcheck on Ubuntu
         if: runner.os == 'Linux'
         run: |
@@ -42,8 +48,7 @@ jobs:
       - name: Render local Homebrew formula
         if: runner.os == 'macOS'
         run: |
-          version=$(cat VERSION)
-          archive_path="$PWD/dist/mkscript-$version.tar.gz"
+          archive_path="$PWD/dist/$MKSCRIPT_SOURCE_ARCHIVE"
           archive_sha=$(shasum -a 256 "$archive_path" | awk '{print $1}')
           mkdir -p build/homebrew
           ./scripts/render-homebrew-formula.sh "file://$archive_path" "$archive_sha" build/homebrew/mkscript.rb
@@ -58,6 +63,12 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Load release variables
+        run: ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+
+      - name: Validate release metadata
+        run: ./scripts/validate-release-metadata.sh
 
       - name: Install packaging tools
         run: |

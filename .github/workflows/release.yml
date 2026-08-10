@@ -15,6 +15,12 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Load release variables
+        run: ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+
+      - name: Validate release metadata and tag
+        run: ./scripts/validate-release-metadata.sh --tag "$GITHUB_REF_NAME"
+
       - name: Install packaging tools
         run: |
           sudo apt-get update
@@ -31,11 +37,10 @@ jobs:
 
       - name: Render Homebrew formula
         run: |
-          version=$(cat VERSION)
-          archive_path="$PWD/dist/mkscript-$version.tar.gz"
+          archive_path="$PWD/dist/$MKSCRIPT_SOURCE_ARCHIVE"
           archive_sha=$(sha256sum "$archive_path" | awk '{print $1}')
           ./scripts/render-homebrew-formula.sh \
-            "https://github.com/seriousCoding/mkscript/releases/download/v$version/mkscript-$version.tar.gz" \
+            "$MKSCRIPT_RELEASE_SOURCE_URL" \
             "$archive_sha" \
             dist/mkscript.rb
 

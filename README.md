@@ -189,10 +189,10 @@ make package
 
 Artifacts are written to `dist/`:
 
-- `mkscript-1.1.0.tar.gz`
-- `mkscript_1.1.0-1_all.deb`
-- `mkscript-1.1.0-1.fc42.noarch.rpm`
-- `mkscript-1.1.0-1.fc42.src.rpm`
+- `mkscript-<version>.tar.gz`
+- `mkscript_<version>-1_all.deb`
+- `mkscript-<version>-1.fc42.noarch.rpm`
+- `mkscript-<version>-1.fc42.src.rpm`
 - `mkscript.tar.gz`
 - `mkscript.deb`
 - `mkscript.rpm`
@@ -206,19 +206,19 @@ Artifacts are written to `dist/`:
 Debian and Ubuntu:
 
 ```bash
-sudo apt install ./mkscript_1.1.0-1_all.deb
+sudo apt install ./mkscript_<version>-1_all.deb
 ```
 
 Fedora:
 
 ```bash
-sudo dnf install ./mkscript-1.1.0-1.fc42.noarch.rpm
+sudo dnf install ./mkscript-<version>-1.fc42.noarch.rpm
 ```
 
 RHEL, Rocky Linux, AlmaLinux, and systems using `yum`:
 
 ```bash
-sudo yum install ./mkscript-1.1.0-1.fc42.noarch.rpm
+sudo yum install ./mkscript-<version>-1.fc42.noarch.rpm
 ```
 
 ## Stable GitHub download URLs
@@ -266,4 +266,5 @@ sudo yum install ./mkscript.rpm
 ## Release automation
 
 - `.github/workflows/ci.yml` runs tests and shell linting.
-- `.github/workflows/release.yml` builds release artifacts, publishes them for version tags such as `v1.1.0`, and can update the Homebrew tap when a token is configured.
+- `.github/workflows/tag-from-version.yml` creates a missing `vX.Y.Z` tag from `VERSION` after `ci` succeeds on `main`.
+- `.github/workflows/release.yml` builds release artifacts, publishes them for the matching `vX.Y.Z` tag, and can update the Homebrew tap when a token is configured.

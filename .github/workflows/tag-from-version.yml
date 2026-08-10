@@ -1,0 +1,44 @@
+name: tag-from-version
+
+on:
+  workflow_run:
+    workflows:
+      - ci
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+
+      - name: Load release variables
+        run: ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+
+      - name: Validate release metadata
+        run: ./scripts/validate-release-metadata.sh
+
+      - name: Create missing release tag
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$MKSCRIPT_TAG" >/dev/null 2>&1; then
+            printf 'Release tag already exists: %s\n' "$MKSCRIPT_TAG"
+            exit 0
+          fi
+
+          git config user.name "${GIT_AUTHOR_NAME:-github-actions[bot]}"
+          git config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
+          git tag -a "$MKSCRIPT_TAG" -m "Release $MKSCRIPT_TAG"
+          git push origin "$MKSCRIPT_TAG"
+          printf 'Created release tag: %s\n' "$MKSCRIPT_TAG"

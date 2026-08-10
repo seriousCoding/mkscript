@@ -4,10 +4,12 @@ set -euo pipefail
 repo_root=$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 )
-version=$(cat "$repo_root/VERSION")
-archive_name="mkscript-$version.tar.gz"
+
+# shellcheck source=scripts/release-vars.sh
+source "$repo_root/scripts/release-vars.sh"
+
 stage_dir=$(mktemp -d)
-archive_root="$stage_dir/mkscript-$version"
+archive_root="$stage_dir/mkscript-$MKSCRIPT_VERSION"
 
 cleanup() {
   rm -rf "$stage_dir"
@@ -38,5 +40,7 @@ for item in "${items[@]}"; do
   cp -R "$repo_root/$item" "$archive_root/$item"
 done
 
-tar -C "$stage_dir" -czf "$repo_root/dist/$archive_name" "mkscript-$version"
-printf 'Built source archive: %s\n' "$repo_root/dist/$archive_name"
+"$archive_root/scripts/sync-release-metadata.sh" "$archive_root"
+
+tar -C "$stage_dir" -czf "$repo_root/dist/$MKSCRIPT_SOURCE_ARCHIVE" "mkscript-$MKSCRIPT_VERSION"
+printf 'Built source archive: %s\n' "$repo_root/dist/$MKSCRIPT_SOURCE_ARCHIVE"

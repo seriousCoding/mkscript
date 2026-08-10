@@ -13,7 +13,10 @@ tap_repo=$2
 repo_root=$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 )
-version=$(cat "$repo_root/VERSION")
+
+# shellcheck source=scripts/release-vars.sh
+source "$repo_root/scripts/release-vars.sh"
+
 worktree=$(mktemp -d)
 
 cleanup() {
@@ -46,6 +49,6 @@ fi
 git -C "$worktree" config user.name "${GIT_AUTHOR_NAME:-github-actions[bot]}"
 git -C "$worktree" config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
 git -C "$worktree" add Formula/mkscript.rb README.md
-git -C "$worktree" commit -m "Update mkscript to v$version"
+git -C "$worktree" commit -m "Update mkscript to $MKSCRIPT_TAG"
 git -C "$worktree" push origin HEAD
 printf 'Published Homebrew formula to %s\n' "$tap_repo"

@@ -30,11 +30,11 @@ curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mksc
 sudo apt install ./mkscript.deb
 ```
 
-Versioned package for the current release:
+Versioned package pattern:
 
 ```bash
-curl -LO https://github.com/seriousCoding/mkscript/releases/download/v1.1.0/mkscript_1.1.0-1_all.deb
-sudo apt install ./mkscript_1.1.0-1_all.deb
+curl -LO https://github.com/seriousCoding/mkscript/releases/download/vX.Y.Z/mkscript_X.Y.Z-1_all.deb
+sudo apt install ./mkscript_X.Y.Z-1_all.deb
 ```
 
 ## Install mkscript on Fedora
@@ -46,11 +46,11 @@ curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mksc
 sudo dnf install ./mkscript.rpm
 ```
 
-Versioned package for the current release:
+Versioned package pattern:
 
 ```bash
-curl -LO https://github.com/seriousCoding/mkscript/releases/download/v1.1.0/mkscript-1.1.0-1.fc42.noarch.rpm
-sudo dnf install ./mkscript-1.1.0-1.fc42.noarch.rpm
+curl -LO https://github.com/seriousCoding/mkscript/releases/download/vX.Y.Z/mkscript-X.Y.Z-1.fc42.noarch.rpm
+sudo dnf install ./mkscript-X.Y.Z-1.fc42.noarch.rpm
 ```
 
 ## Install mkscript on RHEL, Rocky Linux, and AlmaLinux
@@ -62,11 +62,11 @@ curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mksc
 sudo yum install ./mkscript.rpm
 ```
 
-Versioned package for the current release:
+Versioned package pattern:
 
 ```bash
-curl -LO https://github.com/seriousCoding/mkscript/releases/download/v1.1.0/mkscript-1.1.0-1.fc42.noarch.rpm
-sudo yum install ./mkscript-1.1.0-1.fc42.noarch.rpm
+curl -LO https://github.com/seriousCoding/mkscript/releases/download/vX.Y.Z/mkscript-X.Y.Z-1.fc42.noarch.rpm
+sudo yum install ./mkscript-X.Y.Z-1.fc42.noarch.rpm
 ```
 
 ## Download the mkscript source tarball
@@ -77,10 +77,10 @@ Stable alias:
 curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.tar.gz
 ```
 
-Versioned source archive:
+Versioned source archive pattern:
 
 ```bash
-curl -LO https://github.com/seriousCoding/mkscript/releases/download/v1.1.0/mkscript-1.1.0.tar.gz
+curl -LO https://github.com/seriousCoding/mkscript/releases/download/vX.Y.Z/mkscript-X.Y.Z.tar.gz
 ```
 
 ## Verify checksums
@@ -106,7 +106,6 @@ sha256sum mkscript.rpm
 
 Current release documents:
 
-- [Current release page](https://github.com/seriousCoding/mkscript/releases/tag/v1.1.0)
 - [Latest release page](https://github.com/seriousCoding/mkscript/releases/latest)
 - [Current checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS)
 

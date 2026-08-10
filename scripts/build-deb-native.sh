@@ -17,6 +17,7 @@ trap cleanup EXIT
 mkdir -p "$dist_dir" "$package_root"
 cp -R "$repo_root/." "$package_root"
 rm -rf "$package_root/.git" "$package_root/build" "$package_root/dist" "$package_root/outputs" "$package_root/work"
+"$package_root/scripts/sync-release-metadata.sh" "$package_root"
 
 cd "$package_root"
 dpkg-buildpackage -us -uc -b

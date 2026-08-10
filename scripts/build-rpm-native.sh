@@ -4,9 +4,12 @@ set -euo pipefail
 repo_root=$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 )
+
+# shellcheck source=scripts/release-vars.sh
+source "$repo_root/scripts/release-vars.sh"
+
 dist_dir="$repo_root/dist"
-version=$(cat "$repo_root/VERSION")
-archive_path="$dist_dir/mkscript-$version.tar.gz"
+archive_path="$dist_dir/$MKSCRIPT_SOURCE_ARCHIVE"
 topdir=$(mktemp -d)
 
 cleanup() {
@@ -27,6 +30,7 @@ mkdir -p "$dist_dir" \
   "$topdir/SPECS" \
   "$topdir/SRPMS"
 
+"$repo_root/scripts/sync-release-metadata.sh"
 cp "$archive_path" "$topdir/SOURCES/"
 cp "$repo_root/packaging/rpm/mkscript.spec" "$topdir/SPECS/"
 

@@ -1,3 +1,11 @@
+mkscript (1.2.0-1) unstable; urgency=medium
+
+  * Add a default comment header to every newly created script.
+  * Update docs and package smoke tests for the new script layout.
+  * Fix Homebrew formula tests to validate header output correctly.
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 10 Aug 2026 19:05:00 +0000
+
 mkscript (1.1.0-1) unstable; urgency=medium
 
   * Add -c to check the expected global link path.

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-08-10
+
+### Added
+
+- A default comment header for every newly created script with script name, blank description line, creation date, and creator login name.
+
+### Changed
+
+- Homebrew formula tests now validate the generated header content line by line.
+- Documentation and packaging smoke tests now reflect the new default script layout.
+
 ## [1.1.0] - 2026-08-10
 
 ### Added

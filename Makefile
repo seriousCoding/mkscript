@@ -9,7 +9,7 @@ MANDIR ?= $(PREFIX)/share/man
 DOCDIR ?= $(PREFIX)/share/doc/mkscript
 BUILD_BIN := $(BUILD_DIR)/bin/mkscript
 
-.PHONY: all build clean install lint package package-deb package-deb-source package-rpm release-artifacts test
+.PHONY: all build clean install lint package package-deb package-deb-source package-rpm release-artifacts release-tag sync-release-metadata test validate-release
 
 all: build
 
@@ -25,6 +25,12 @@ test: build
 
 lint:
 	shellcheck src/mkscript.sh.in scripts/*.sh test/test_mkscript.sh
+
+sync-release-metadata:
+	./scripts/sync-release-metadata.sh
+
+validate-release:
+	./scripts/validate-release-metadata.sh
 
 install: build
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(MANDIR)/man1 $(DESTDIR)$(DOCDIR)
@@ -46,6 +52,9 @@ package: release-artifacts
 
 release-artifacts:
 	./scripts/build-release-artifacts.sh
+
+release-tag:
+	./scripts/tag-release.sh
 
 clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)

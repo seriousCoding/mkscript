@@ -4,12 +4,15 @@ set -euo pipefail
 repo_root=$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 )
+
+# shellcheck source=scripts/release-vars.sh
+source "$repo_root/scripts/release-vars.sh"
+
 dist_dir="$repo_root/dist"
 build_root=$(mktemp -d)
 package_root="$build_root/mkscript"
-version=$(cat "$repo_root/VERSION")
-orig_stage_root="$build_root/mkscript-$version"
-orig_archive="$build_root/mkscript_${version}.orig.tar.gz"
+orig_stage_root="$build_root/mkscript-$MKSCRIPT_VERSION"
+orig_archive="$build_root/mkscript_${MKSCRIPT_VERSION}.orig.tar.gz"
 
 cleanup() {
   rm -rf "$build_root"
@@ -30,12 +33,14 @@ require_gpg() {
 mkdir -p "$dist_dir" "$package_root"
 cp -R "$repo_root/." "$package_root"
 rm -rf "$package_root/.git" "$package_root/build" "$package_root/dist" "$package_root/outputs" "$package_root/work"
+"$package_root/scripts/sync-release-metadata.sh" "$package_root"
 
 mkdir -p "$orig_stage_root"
 for item in .github .gitignore CHANGELOG.md LICENSE Makefile README.md VERSION docs mkscript.1 packaging scripts src test; do
   cp -R "$repo_root/$item" "$orig_stage_root/$item"
 done
-tar -C "$build_root" -czf "$orig_archive" "mkscript-$version"
+"$orig_stage_root/scripts/sync-release-metadata.sh" "$orig_stage_root"
+tar -C "$build_root" -czf "$orig_archive" "mkscript-$MKSCRIPT_VERSION"
 
 cd "$package_root"
 
