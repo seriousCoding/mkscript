@@ -27,7 +27,7 @@ mkdir -p "$dist_dir" \
 cp "$dist_dir/mkscript-$version.tar.gz" "$topdir/SOURCES/"
 cp "$repo_root/packaging/rpm/mkscript.spec" "$topdir/SPECS/"
 
-rpmbuild --define "_topdir $topdir" -ba "$topdir/SPECS/mkscript.spec"
+rpmbuild --nodeps --define "_topdir $topdir" -ba "$topdir/SPECS/mkscript.spec"
 LC_ALL=C LANG=C rpmlint "$topdir/SPECS/mkscript.spec" "$topdir/SRPMS/"*.src.rpm "$topdir/RPMS/noarch/"*.rpm
 cp "$topdir/RPMS/noarch/"*.rpm "$topdir/SRPMS/"*.src.rpm "$dist_dir"/
 printf 'Built RPM artifacts in %s\n' "$dist_dir"

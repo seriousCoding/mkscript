@@ -26,6 +26,7 @@ strict-mode line via -s or --strict.
 
 %install
 %make_install PREFIX=%{_prefix} DESTDIR=%{buildroot}
+rm -f %{buildroot}%{_docdir}/mkscript/README.md
 rm -f %{buildroot}%{_docdir}/mkscript/LICENSE
 
 %check

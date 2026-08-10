@@ -33,7 +33,7 @@ jobs:
         run: ./scripts/build-deb-native.sh
 
       - name: Build RPM package
-        run: ./scripts/build-rpm-native.sh
+        run: ./scripts/build-rpm-docker.sh
 
       - name: Write checksums
         run: ./scripts/write-checksums.sh dist
