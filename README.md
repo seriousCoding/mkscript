@@ -116,6 +116,10 @@ Artifacts are written to `dist/`:
 - `mkscript_1.0.1-1_all.deb`
 - `mkscript-1.0.1-1.fc42.noarch.rpm`
 - `mkscript-1.0.1-1.fc42.src.rpm`
+- `mkscript.tar.gz`
+- `mkscript.deb`
+- `mkscript.rpm`
+- `mkscript.src.rpm`
 - `mkscript_1.0.1-1_arm64.buildinfo`
 - `mkscript_1.0.1-1_arm64.changes`
 - checksums and build metadata
@@ -138,6 +142,31 @@ RHEL, Rocky Linux, AlmaLinux, and systems using `yum`:
 
 ```bash
 sudo yum install ./mkscript-1.0.1-1.fc42.noarch.rpm
+```
+
+## Stable GitHub download URLs
+
+These alias filenames stay the same across releases, so users can keep the same GitHub download command:
+
+Debian and Ubuntu:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.deb
+sudo apt install ./mkscript.deb
+```
+
+Fedora:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.rpm
+sudo dnf install ./mkscript.rpm
+```
+
+RHEL, Rocky Linux, AlmaLinux, and systems using `yum`:
+
+```bash
+curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.rpm
+sudo yum install ./mkscript.rpm
 ```
 
 ## Repository layout

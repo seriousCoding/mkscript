@@ -12,4 +12,5 @@ make -C "$repo_root" test
 "$repo_root/scripts/build-source-archive.sh"
 "$repo_root/scripts/build-deb-docker.sh"
 "$repo_root/scripts/build-rpm-docker.sh"
+"$repo_root/scripts/write-release-aliases.sh" "$repo_root/dist"
 "$repo_root/scripts/write-checksums.sh" "$repo_root/dist"

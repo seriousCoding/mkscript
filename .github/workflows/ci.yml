@@ -56,6 +56,9 @@ jobs:
       - name: Build RPM package
         run: ./scripts/build-rpm-docker.sh
 
+      - name: Write release aliases
+        run: ./scripts/write-release-aliases.sh dist
+
       - name: Write checksums
         run: ./scripts/write-checksums.sh dist
 
