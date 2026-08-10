@@ -10,10 +10,24 @@ class Mkscript < Formula
   end
 
   test do
+    demo_pattern = %r{\A#!/usr/bin/env bash
+# Script: demo
+# Description:
+# Created: \d{4}-\d{2}-\d{2}
+# Creator: .+
+\z}x
+    strict_demo_pattern = %r{\A#!/usr/bin/env bash
+# Script: strict-demo
+# Description:
+# Created: \d{4}-\d{2}-\d{2}
+# Creator: .+
+set -euo pipefail
+\z}x
+
     system bin/"mkscript", "demo"
-    assert_match(/\A#!\/usr\/bin\/env bash\n# Script: demo\n# Description:\n# Created: \d{4}-\d{2}-\d{2}\n# Creator: .+\n\z/, (testpath/"demo").read)
+    assert_match(demo_pattern, (testpath/"demo").read)
 
     system bin/"mkscript", "-s", "strict-demo"
-    assert_match(/\A#!\/usr\/bin\/env bash\n# Script: strict-demo\n# Description:\n# Created: \d{4}-\d{2}-\d{2}\n# Creator: .+\nset -euo pipefail\n\z/, (testpath/"strict-demo").read)
+    assert_match(strict_demo_pattern, (testpath/"strict-demo").read)
   end
 end
