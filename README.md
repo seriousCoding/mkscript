@@ -414,5 +414,5 @@ sudo yum install ./mkscript.rpm
 ## Release automation
 
 - `.github/workflows/ci.yml` runs tests and shell linting.
-- `.github/workflows/tag-from-version.yml` creates a missing `vX.Y.Z` tag from `VERSION` after `ci` succeeds on `main`, then explicitly starts the release workflow.
+- `.github/workflows/tag-from-version.yml` takes a successful `main` CI result, bumps the patch version, syncs release metadata, commits `chore(release): vX.Y.Z`, creates the matching tag, and explicitly starts the release workflow.
 - `.github/workflows/release.yml` builds release artifacts, publishes them for the matching `vX.Y.Z` tag, and can update the Homebrew tap when a token is configured.

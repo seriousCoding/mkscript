@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   tag:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out tested commit
@@ -26,16 +26,102 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --force --tags origin
+      - name: Fetch release refs
+        run: git fetch --force --tags origin main
+
+      - name: Determine release mode
+        id: release_mode
+        run: |
+          set -euo pipefail
+
+          tested_sha='${{ github.event.workflow_run.head_sha }}'
+          origin_main_sha=$(git rev-parse origin/main)
+          release_pattern='^chore\(release\): v[0-9]+\.[0-9]+\.[0-9]+$'
+
+          if [ "$origin_main_sha" = "$tested_sha" ]; then
+            head_subject=$(git log -1 --format=%s "$tested_sha")
+            if printf '%s\n' "$head_subject" | grep -Eq "$release_pattern"; then
+              printf 'mode=skip\n' >> "$GITHUB_OUTPUT"
+              printf 'reason=tested commit is already a release commit\n'
+              exit 0
+            fi
+
+            printf 'mode=create\n' >> "$GITHUB_OUTPUT"
+            printf 'tested commit still matches origin/main\n'
+            exit 0
+          fi
+
+          origin_main_subject=$(git log -1 --format=%s origin/main)
+          origin_main_parent=$(git rev-parse origin/main^ 2>/dev/null || true)
+
+          if [ "$origin_main_parent" = "$tested_sha" ] && printf '%s\n' "$origin_main_subject" | grep -Eq "$release_pattern"; then
+            printf 'mode=resume\n' >> "$GITHUB_OUTPUT"
+            printf 'release commit already exists on main; resuming publish flow\n'
+            exit 0
+          fi
+
+          printf 'mode=skip\n' >> "$GITHUB_OUTPUT"
+          printf 'reason=origin/main advanced past tested commit\n'
+
+      - name: Generate release notes from git history
+        if: steps.release_mode.outputs.mode == 'create'
+        run: |
+          set -euo pipefail
+
+          previous_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null || true)
+
+          if [ -n "$previous_tag" ]; then
+            git log \
+              --format=%s \
+              --no-merges \
+              --invert-grep \
+              --grep='^chore(release): v' \
+              "${previous_tag}..HEAD" > release-notes.txt
+          else
+            git log \
+              --format=%s \
+              --no-merges \
+              --invert-grep \
+              --grep='^chore(release): v' \
+              -n 20 HEAD > release-notes.txt
+          fi
+
+          awk 'NF && !seen[$0]++' release-notes.txt > release-notes.tmp
+          mv release-notes.tmp release-notes.txt
+
+          if [ ! -s release-notes.txt ]; then
+            git log -1 --format=%s HEAD > release-notes.txt
+          fi
+
+      - name: Configure git author
+        if: steps.release_mode.outputs.mode != 'skip'
+        run: |
+          git config user.name "${GIT_AUTHOR_NAME:-github-actions[bot]}"
+          git config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
+
+      - name: Create automated release commit
+        if: steps.release_mode.outputs.mode == 'create'
+        run: |
+          ./scripts/bump-version.sh --notes-file release-notes.txt
+          ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+          git add VERSION CHANGELOG.md debian/changelog packaging/rpm/mkscript.spec mkscript.1
+          git commit -m "chore(release): $MKSCRIPT_TAG"
+          git push origin HEAD:main
+
+      - name: Check out release commit
+        if: steps.release_mode.outputs.mode == 'resume'
+        run: git checkout --detach origin/main
 
       - name: Load release variables
+        if: steps.release_mode.outputs.mode != 'skip'
         run: ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
 
       - name: Validate release metadata
+        if: steps.release_mode.outputs.mode != 'skip'
         run: ./scripts/validate-release-metadata.sh
 
       - name: Create missing release tag
+        if: steps.release_mode.outputs.mode != 'skip'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

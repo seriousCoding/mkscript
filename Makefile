@@ -22,9 +22,10 @@ $(BUILD_BIN): src/mkscript.sh.in VERSION scripts/render.sh
 
 test: build
 	MKSCRIPT_UNDER_TEST='$(CURDIR)/$(BUILD_BIN)' VERSION='$(VERSION)' ./test/test_mkscript.sh
+	./test/test_release_scripts.sh
 
 lint:
-	shellcheck src/mkscript.sh.in scripts/*.sh test/test_mkscript.sh
+	shellcheck src/mkscript.sh.in scripts/*.sh test/*.sh
 
 sync-release-metadata:
 	./scripts/sync-release-metadata.sh

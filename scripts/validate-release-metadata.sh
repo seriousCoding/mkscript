@@ -43,6 +43,13 @@ if [ -n "$expected_tag" ] && [ "$expected_tag" != "$MKSCRIPT_TAG" ]; then
   exit 65
 fi
 
+top_changelog_entry=$(sed -n '/^## \[/ {p; q;}' "$repo_root/CHANGELOG.md")
+
+if ! printf '%s\n' "$top_changelog_entry" | grep -Eq "^## \\[$MKSCRIPT_VERSION\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$"; then
+  printf 'Top changelog entry does not match VERSION: %s\n' "$MKSCRIPT_VERSION" >&2
+  exit 65
+fi
+
 if ! grep -Fqx "Version:        $MKSCRIPT_VERSION" "$repo_root/packaging/rpm/mkscript.spec"; then
   printf 'RPM spec version does not match VERSION: %s\n' "$MKSCRIPT_VERSION" >&2
   exit 65
