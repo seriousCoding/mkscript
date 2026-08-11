@@ -3,7 +3,7 @@
 mkscript \- create Bash, Terraform, and Ansible starter files safely
 .SH SYNOPSIS
 .B mkscript
-[\fB\-f\fR|\fB\-\-files\fR]
+[\fB\-f\fR|\fB\-\-files\fR [\fIdepth\fR]]
 [\fB\-\-help\fR]
 [\fB\-\-version\fR]
 .br
@@ -96,6 +96,8 @@ removes the expected global symlink after confirmation.
 or
 .B \-\-files
 scans the current directory tree and prints a table of matching local files.
+.I depth
+may be supplied as a single digit from 0 through 9 to limit how many subfolder levels are scanned.
 A file is listed when it ends with
 .BR .sh ,
 is executable, or is the local target of a managed global symlink.
@@ -129,6 +131,9 @@ and
 .B \-f, \-\-files
 List matching local files under the current directory tree in a table with
 path, kind, executable state, and global-link state.
+When supplied, the optional
+.I depth
+value must be a single digit from 0 through 9, where 0 means the current directory only.
 .TP
 .B \-s, \-\-strict
 Add
@@ -201,6 +206,16 @@ mkscript -g deploy.sh -s
 List matching files under the current tree:
 .EX
 mkscript -f
+.EE
+.TP
+List matching files only in the current directory:
+.EX
+mkscript -f 0
+.EE
+.TP
+List matching files up to one subfolder deep:
+.EX
+mkscript --files 1
 .EE
 .TP
 Move an existing Bash script and recreate its global shortcut if needed:

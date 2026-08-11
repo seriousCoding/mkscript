@@ -11,7 +11,7 @@ usage() {
 Usage:
   mkscript [OPTION]... PATH
   mkscript -mv [--global] SOURCE TARGET
-  mkscript -f|--files
+  mkscript -f|--files [DEPTH]
 
 Create a new file from a Bash, Terraform, or Ansible template.
 Global link management applies to Bash templates only.
@@ -20,6 +20,7 @@ Options:
   -t, --template TEMPLATE
                   use bash, terraform, or ansible
   -f, --files     list matching files under the current tree
+                  DEPTH 0-9 limits subfolder scanning; 0 means current folder only
   -mv             move an existing Bash script to a new path
   -s, --strict    add "set -euo pipefail" after the shebang
   -g, --global    create a global symlink for the new Bash script
@@ -44,6 +45,18 @@ fail_usage() {
 fail_create() {
   printf '%s: %s\n' "$MKSCRIPT_NAME" "$1" >&2
   exit "$EX_CANTCREAT"
+}
+
+validate_files_depth() {
+  local depth=${1-}
+
+  case $depth in
+    ''|[0-9])
+      ;;
+    *)
+      fail_usage 'file listing depth must be a single digit from 0 to 9'
+      ;;
+  esac
 }
 
 validate_template() {
@@ -470,11 +483,13 @@ kind_for_file() {
 }
 
 list_script_files() {
+  local depth=${1-}
   local tree_root
   local global_dir
   local absolute_global_dir=''
   local global_targets_file
   local rows_file
+  local search_maxdepth
   local path
   local absolute_file
   local absolute_target
@@ -484,11 +499,22 @@ list_script_files() {
   local kind
   local exec_label
   local global_label
+  local -a tree_find_args
+
+  validate_files_depth "$depth"
 
   tree_root=$(pwd -P)
   global_dir=$(global_bin_dir)
   global_targets_file=$(mktemp)
   rows_file=$(mktemp)
+  tree_find_args=(.)
+
+  if [ -n "$depth" ]; then
+    search_maxdepth=$((depth + 1))
+    tree_find_args+=(-maxdepth "$search_maxdepth")
+  fi
+
+  tree_find_args+=( \( -type f -o -type l \) -print )
 
   if [ -e "$global_dir" ] || [ -L "$global_dir" ]; then
     if [ ! -d "$global_dir" ]; then
@@ -508,7 +534,7 @@ list_script_files() {
       if path_in_tree "$absolute_target" "$tree_root"; then
         printf '%s\n' "$absolute_target" >> "$global_targets_file"
       fi
-    done < <(find "$global_dir" -mindepth 1 -maxdepth 1 -type l -print | LC_ALL=C sort)
+    done < <(find "$global_dir" -mindepth 1 -maxdepth 1 -type l -print 2>/dev/null | LC_ALL=C sort)
   fi
 
   if [ -s "$global_targets_file" ]; then
@@ -567,7 +593,7 @@ list_script_files() {
     fi
 
     printf '%s\t%s\t%s\t%s\n' "$path" "$kind" "$exec_label" "$global_label" >> "$rows_file"
-  done < <(find . \( -type f -o -type l \) -print | LC_ALL=C sort)
+  done < <(find "${tree_find_args[@]}" 2>/dev/null | LC_ALL=C sort)
 
   if [ ! -s "$rows_file" ]; then
     rm -f "$global_targets_file" "$rows_file"
@@ -824,6 +850,7 @@ main() {
   local check_only=0
   local remove_only=0
   local files_only=0
+  local files_depth=''
   local move_only=0
   local literal_args=0
   local template='bash'
@@ -929,8 +956,13 @@ main() {
   validate_template "$template"
 
   if [ "$files_only" -eq 1 ]; then
-    if [ "$positional_count" -ne 0 ]; then
-      fail_usage "file listing mode does not accept a path"
+    if [ "$positional_count" -gt 1 ]; then
+      fail_usage "file listing mode accepts at most one depth value"
+    fi
+
+    if [ "$positional_count" -eq 1 ]; then
+      files_depth=$first_path
+      validate_files_depth "$files_depth"
     fi
   elif [ "$move_only" -eq 1 ]; then
     if [ "$positional_count" -ne 2 ]; then
@@ -1056,7 +1088,7 @@ main() {
   fi
 
   if [ "$files_only" -eq 1 ]; then
-    list_script_files
+    list_script_files "$files_depth"
     exit 0
   fi
 

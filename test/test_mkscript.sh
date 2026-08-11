@@ -57,7 +57,7 @@ assert_grep_count() {
   local message=$4
   local actual
 
-  actual=$(printf '%s\n' "$content" | grep -Ec -- "$pattern")
+  actual=$(printf '%s\n' "$content" | grep -Ec -- "$pattern" || true)
   if [ "$actual" -ne "$expected" ]; then
     printf 'FAIL: %s\nExpected matches: %s\nActual matches: %s\nPattern: %s\nContent: %s\n' \
       "$message" "$expected" "$actual" "$pattern" "$content" >&2
@@ -573,9 +573,10 @@ test_help_output() {
   assert_status 0 "$RUN_STATUS" 'help should exit successfully'
   assert_contains "$RUN_STDOUT" 'Usage:' 'help should show the usage header'
   assert_contains "$RUN_STDOUT" 'mkscript [OPTION]... PATH' 'help should show the create-path usage form'
-  assert_contains "$RUN_STDOUT" 'mkscript -f|--files' 'help should show the file-listing usage form'
+  assert_contains "$RUN_STDOUT" 'mkscript -f|--files [DEPTH]' 'help should show the file-listing usage form'
   assert_contains "$RUN_STDOUT" '-t, --template TEMPLATE' 'help should document template selection'
   assert_contains "$RUN_STDOUT" '-f, --files' 'help should document file listing mode'
+  assert_contains "$RUN_STDOUT" 'DEPTH 0-9 limits subfolder scanning; 0 means current folder only' 'help should explain file listing depth'
   assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
   assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
@@ -781,14 +782,72 @@ test_files_mode_reports_no_matches() {
   rm -rf "$sandbox"
 }
 
-test_files_mode_rejects_path_argument() {
+test_files_mode_respects_depth_zero() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/nested/deeper"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/root.sh"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/child.sh"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/deeper/grandchild.sh"
+
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f 0
+  assert_status 0 "$RUN_STATUS" 'files mode should accept depth 0'
+  assert_matches "$RUN_STDOUT" '^\./root\.sh +sh +no +no *$' 'depth 0 should include matching files from the current directory'
+  assert_grep_count 0 "$RUN_STDOUT" '^\./nested/' 'depth 0 should exclude files from subdirectories'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_respects_depth_one() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/nested/deeper"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/root.sh"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/child.sh"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/deeper/grandchild.sh"
+
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" --files 1
+  assert_status 0 "$RUN_STATUS" 'files mode should accept depth 1'
+  assert_matches "$RUN_STDOUT" '^\./root\.sh +sh +no +no *$' 'depth 1 should include matching files from the current directory'
+  assert_matches "$RUN_STDOUT" '^\./nested/child\.sh +sh +no +no *$' 'depth 1 should include matching files one subfolder deep'
+  assert_grep_count 0 "$RUN_STDOUT" '^\./nested/deeper/' 'depth 1 should exclude files deeper than one subfolder'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_skips_unreadable_directories_quietly() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/locked"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/root.sh"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/locked/hidden.sh"
+  chmod 000 "$sandbox/locked"
+
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f
+  chmod 700 "$sandbox/locked"
+
+  assert_status 0 "$RUN_STATUS" 'files mode should still succeed when a subdirectory is unreadable'
+  assert_grep_count 0 "$RUN_STDERR" 'Operation not permitted|Permission denied' 'files mode should suppress unreadable-directory noise'
+  assert_matches "$RUN_STDOUT" '^\./root\.sh +sh +no +no *$' 'files mode should still include readable matches'
+  assert_grep_count 0 "$RUN_STDOUT" 'hidden\.sh' 'files mode should skip matches inside unreadable directories'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_invalid_depth() {
   local sandbox
 
   sandbox=$(mktemp -d)
   cd "$sandbox"
-  run_capture "$MKSCRIPT_UNDER_TEST" -f .
-  assert_status 64 "$RUN_STATUS" 'files mode should reject a path argument'
-  assert_contains "$RUN_STDERR" 'file listing mode does not accept a path' 'files mode should explain rejected path arguments'
+  run_capture "$MKSCRIPT_UNDER_TEST" -f 10
+  assert_status 64 "$RUN_STATUS" 'files mode should reject invalid depth values'
+  assert_contains "$RUN_STDERR" 'file listing depth must be a single digit from 0 to 9' 'files mode should explain invalid depth values'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -860,7 +919,7 @@ test_files_mode_rejects_move_flag_combination() {
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -f -mv source target
   assert_status 64 "$RUN_STATUS" 'files mode should reject the move flag combination'
-  assert_contains "$RUN_STDERR" 'file listing mode does not accept a path' 'the rejected files/move combination should stop before interpreting move paths'
+  assert_contains "$RUN_STDERR" 'file listing mode accepts at most one depth value' 'the rejected files/move combination should stop before interpreting move paths'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -1525,7 +1584,10 @@ run_test test_global_mode_refuses_existing_global_path
 run_test test_global_mode_falls_back_to_local_bin
 run_test test_files_mode_lists_matching_tree_files
 run_test test_files_mode_reports_no_matches
-run_test test_files_mode_rejects_path_argument
+run_test test_files_mode_respects_depth_zero
+run_test test_files_mode_respects_depth_one
+run_test test_files_mode_skips_unreadable_directories_quietly
+run_test test_files_mode_rejects_invalid_depth
 run_test test_files_mode_rejects_global_flag_combination
 run_test test_files_mode_rejects_strict_flag_combination
 run_test test_files_mode_rejects_link_flag_combination

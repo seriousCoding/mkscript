@@ -181,6 +181,18 @@ List matching files under the current folder tree:
 mkscript -f
 ```
 
+Limit file listing to the current folder only:
+
+```bash
+mkscript -f 0
+```
+
+Limit file listing to one subfolder deep:
+
+```bash
+mkscript --files 1
+```
+
 This prints a table like:
 
 ```text
@@ -255,12 +267,15 @@ mkscript site.yml --template ansible
 
 ## Files mode notes
 
-- `-f` and `--files` scan the current folder and all subdirectories.
+- `-f` and `--files` scan the current folder and all subdirectories by default.
+- `-f 0` limits the scan to the current folder only.
+- `-f 1` through `-f 9` include that many subfolder levels.
 - A file is listed if it ends with `.sh`, is executable, or is the local target of a managed global symlink.
 - `PATH` shows the relative file path.
 - `KIND` is `sh`, `exec`, `sh+exec`, or `file`.
 - `EXEC` shows whether the local file is executable.
 - `GLOBAL` shows whether a managed global symlink points to that local file.
+- Unreadable folders are skipped quietly so protected macOS paths do not clutter the output.
 - `-f` is read-only and cannot be combined with `--template`, `-g`, `-mv`, `-s`, `-l`, `-c`, or `-r`.
 
 ## Move mode notes
