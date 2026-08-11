@@ -126,6 +126,10 @@ mkscript -s deploy
 mkscript demo -g
 mkscript -c demo
 mkscript -r demo
+mkscript -f
+mkscript -f 1
+mkscript -f bash demo.sh
+printf '%s\n' bash demo.sh | mkscript -f
 ```
 
 ## More documentation

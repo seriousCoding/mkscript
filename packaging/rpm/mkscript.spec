@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.3.0
+Version:        1.4.0
 Release:        1%{?dist}
 Summary:        Create Bash, Terraform, and Ansible starter files safely
 
@@ -18,7 +18,9 @@ default comment header. Bash remains the default template and uses the
 standard portable Bash interpreter header. The tool refuses to
 overwrite existing files, symbolic links, and directories, can
 optionally add a Bash strict-mode line via -s or --strict, and can
-create, check, or remove Bash-specific global shortcuts later.
+create, check, or remove Bash-specific global shortcuts later. The
+-f mode can either list matching files under the current tree or look
+up commands and filenames directly.
 
 %prep
 %autosetup
@@ -41,6 +43,12 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Tue Aug 11 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.0-1
+- Add -f lookup mode for commands and filenames
+- Accept newline-separated lookup names on stdin for -f
+- Keep -f 0 through -f 9 as local listing depth selectors
+- Sync INSTALL.md, man page, and package metadata with the updated behavior
+
 * Mon Aug 10 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.3.0-1
 - Add Terraform and Ansible starter file templates
 - Add -mv to move a Bash script and recreate its managed global link

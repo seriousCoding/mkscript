@@ -1,3 +1,13 @@
+mkscript (1.4.0-1) unstable; urgency=medium
+
+  * Add -f lookup mode for commands and filenames.
+  * Accept newline-separated lookup names on stdin for -f.
+  * Keep -f 0 through -f 9 as local listing depth selectors.
+  * Sync INSTALL.md, man page, and package metadata with the new
+    file-listing and lookup behavior.
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Tue, 11 Aug 2026 09:30:00 +0000
+
 mkscript (1.3.0-1) unstable; urgency=medium
 
   * Add Terraform and Ansible starter file templates.

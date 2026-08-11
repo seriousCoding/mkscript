@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 2026-08-11
+
+### Added
+
+- `-f name1 [name2 ... name9]` lookup mode to resolve commands, local files, and indexed filenames.
+- `printf '%s\n' name1 name2 | mkscript -f` support for newline-separated lookup input from standard input.
+
+### Changed
+
+- `-f` now supports both local tree listing and lookup mode while keeping depth values `0` through `9` for listing.
+- `INSTALL.md`, the man page, and packaged metadata now document lookup mode, exit codes, and the updated `-f` behavior consistently.
+
 ## [1.3.0] - 2026-08-10
 
 ### Added
