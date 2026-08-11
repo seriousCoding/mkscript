@@ -193,6 +193,18 @@ Limit file listing to one subfolder deep:
 mkscript --files 1
 ```
 
+Look up one or more commands or filenames and print the resolved location:
+
+```bash
+mkscript -f bash README.md
+```
+
+Look up names from a pipe:
+
+```bash
+printf '%s\n' bash README.md | mkscript -f
+```
+
 This prints a table like:
 
 ```text
@@ -236,7 +248,7 @@ mkscript site.yml --template ansible
 
 - `0`: success
 - `64`: command-line usage error
-- `1`: checked or removal target was not present
+- `1`: checked or removal target was not present, or one or more lookup names were not found
 - `73`: could not create the requested script safely
 
 ## Global mode notes
@@ -270,12 +282,19 @@ mkscript site.yml --template ansible
 - `-f` and `--files` scan the current folder and all subdirectories by default.
 - `-f 0` limits the scan to the current folder only.
 - `-f 1` through `-f 9` include that many subfolder levels.
+- `-f name1 [name2 ...]` switches to lookup mode for one to nine names.
+- `printf '%s\n' name1 name2 | mkscript -f` also uses lookup mode from newline-separated stdin.
 - A file is listed if it ends with `.sh`, is executable, or is the local target of a managed global symlink.
 - `PATH` shows the relative file path.
 - `KIND` is `sh`, `exec`, `sh+exec`, or `file`.
 - `EXEC` shows whether the local file is executable.
 - `GLOBAL` shows whether a managed global symlink points to that local file.
 - Unreadable folders are skipped quietly so protected macOS paths do not clutter the output.
+- Lookup mode prints `QUERY`, `FOUND`, `TYPE`, and `LOCATION`.
+- Lookup mode checks an exact path first, then `PATH` commands, then current-tree and wider filename matches.
+- Lookup mode returns `0` only when every requested name is found, and `1` when any requested name is missing.
+- Lookup mode accepts at most nine names total across arguments and piped stdin.
+- A single numeric argument from `0` to `9` keeps its depth meaning; if you need lookup input from stdin, do not combine it with a depth argument.
 - `-f` is read-only and cannot be combined with `--template`, `-g`, `-mv`, `-s`, `-l`, `-c`, or `-r`.
 
 ## Move mode notes

@@ -1,4 +1,4 @@
-.TH MKSCRIPT 1 "2026-08-10" "mkscript 1.3.0" "User Commands"
+.TH MKSCRIPT 1 "2026-08-11" "mkscript 1.3.0" "User Commands"
 .SH NAME
 mkscript \- create Bash, Terraform, and Ansible starter files safely
 .SH SYNOPSIS
@@ -6,6 +6,11 @@ mkscript \- create Bash, Terraform, and Ansible starter files safely
 [\fB\-f\fR|\fB\-\-files\fR [\fIdepth\fR]]
 [\fB\-\-help\fR]
 [\fB\-\-version\fR]
+.br
+.B mkscript
+[\fB\-f\fR|\fB\-\-files\fR]
+\fIname\fR
+[\fIname\fR ...]
 .br
 .B mkscript
 [\fB\-t\fR|\fB\-\-template\fR \fItemplate\fR]
@@ -102,6 +107,17 @@ A file is listed when it ends with
 .BR .sh ,
 is executable, or is the local target of a managed global symlink.
 .PP
+When
+.B \-f
+or
+.B \-\-files
+receives one to nine names from arguments or newline-separated standard input,
+.B mkscript
+switches to lookup mode and prints the resolved location for each requested name.
+Lookup mode checks an exact path first, then commands on
+.BR PATH ,
+then current-tree and wider filename matches.
+.PP
 .B \-mv
 moves an existing local Bash script to a new path, preserves its permission mode,
 and recreates the global shortcut when the source was linked already or when
@@ -134,6 +150,10 @@ path, kind, executable state, and global-link state.
 When supplied, the optional
 .I depth
 value must be a single digit from 0 through 9, where 0 means the current directory only.
+When one to nine
+.I name
+arguments are supplied, or when newline-separated names are piped to standard input,
+lookup mode prints a table with query, found state, result type, and resolved location.
 .TP
 .B \-s, \-\-strict
 Add
@@ -172,7 +192,7 @@ Success.
 Command-line usage error.
 .TP
 .B 1
-The requested link was not present for check or removal mode.
+The requested link was not present for check or removal mode, or one or more lookup names were not found.
 .TP
 .B 73
 The target script could not be created safely.
@@ -216,6 +236,16 @@ mkscript -f 0
 List matching files up to one subfolder deep:
 .EX
 mkscript --files 1
+.EE
+.TP
+Look up one or more names and print the resolved location:
+.EX
+mkscript -f bash README.md
+.EE
+.TP
+Look up newline-separated names from standard input:
+.EX
+printf "%s\\n" bash README.md | mkscript -f
 .EE
 .TP
 Move an existing Bash script and recreate its global shortcut if needed:

@@ -574,9 +574,11 @@ test_help_output() {
   assert_contains "$RUN_STDOUT" 'Usage:' 'help should show the usage header'
   assert_contains "$RUN_STDOUT" 'mkscript [OPTION]... PATH' 'help should show the create-path usage form'
   assert_contains "$RUN_STDOUT" 'mkscript -f|--files [DEPTH]' 'help should show the file-listing usage form'
+  assert_contains "$RUN_STDOUT" 'mkscript -f|--files NAME [NAME ...]' 'help should show the file lookup usage form'
   assert_contains "$RUN_STDOUT" '-t, --template TEMPLATE' 'help should document template selection'
   assert_contains "$RUN_STDOUT" '-f, --files' 'help should document file listing mode'
   assert_contains "$RUN_STDOUT" 'DEPTH 0-9 limits subfolder scanning; 0 means current folder only' 'help should explain file listing depth'
+  assert_contains "$RUN_STDOUT" 'NAME arguments, or piped newline-separated names, perform lookup mode' 'help should explain file lookup mode'
   assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
   assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
@@ -852,6 +854,102 @@ test_files_mode_rejects_invalid_depth() {
   rm -rf "$sandbox"
 }
 
+test_files_mode_looks_up_name_from_arguments() {
+  local sandbox
+  local expected_path
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/nested"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/lookup-target.sh"
+  expected_path=$(cd "$sandbox" && pwd -P)/nested/lookup-target.sh
+
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f lookup-target.sh
+  assert_status 0 "$RUN_STATUS" 'files mode should look up names passed as arguments'
+  assert_matches "$RUN_STDOUT" '^QUERY +FOUND +TYPE +LOCATION *$' 'lookup mode should print a readable table header'
+  assert_contains "$RUN_STDOUT" 'lookup-target.sh' 'lookup mode should include the requested query name'
+  assert_contains "$RUN_STDOUT" 'yes' 'lookup mode should mark found entries clearly'
+  assert_contains "$RUN_STDOUT" 'file' 'lookup mode should identify current-tree file matches'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'lookup mode should print the resolved file location'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_looks_up_name_from_stdin() {
+  local sandbox
+  local expected_path
+
+  sandbox=$(mktemp -d)
+  printf '#!/usr/bin/env bash\n' > "$sandbox/stdin-target.sh"
+  expected_path=$(cd "$sandbox" && pwd -P)/stdin-target.sh
+
+  cd "$sandbox"
+  run_capture_with_input $'stdin-target.sh\n' "$MKSCRIPT_UNDER_TEST" -f
+  assert_status 0 "$RUN_STATUS" 'files mode should accept lookup names from stdin'
+  assert_contains "$RUN_STDOUT" 'stdin-target.sh' 'stdin lookup mode should include the requested query name'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'stdin lookup mode should print the resolved file location'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_looks_up_name_via_xargs() {
+  local sandbox
+  local expected_path
+
+  sandbox=$(mktemp -d)
+  printf '#!/usr/bin/env bash\n' > "$sandbox/xargs-target.sh"
+  expected_path=$(cd "$sandbox" && pwd -P)/xargs-target.sh
+
+  cd "$sandbox"
+  run_capture env MKSCRIPT_UNDER_TEST="$MKSCRIPT_UNDER_TEST" bash -lc "printf '%s\n' xargs-target.sh | xargs \"\$MKSCRIPT_UNDER_TEST\" -f"
+  assert_status 0 "$RUN_STATUS" 'files mode should work with xargs-fed lookup arguments'
+  assert_contains "$RUN_STDOUT" 'xargs-target.sh' 'xargs lookup mode should include the requested query name'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'xargs lookup mode should print the resolved file location'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_returns_one_for_missing_lookup_name() {
+  local sandbox
+  local missing_name
+
+  sandbox=$(mktemp -d)
+  missing_name="mkscript-missing-${PPID}-$$"
+
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f "$missing_name"
+  assert_status 1 "$RUN_STATUS" 'lookup mode should return 1 when a name is not found'
+  assert_contains "$RUN_STDOUT" "$missing_name" 'missing lookup mode should include the requested query name'
+  assert_contains "$RUN_STDOUT" 'missing' 'missing lookup mode should mark missing entries'
+  assert_contains "$RUN_STDOUT" '-' 'missing lookup mode should use a placeholder location'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_too_many_lookup_names() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" -f one two three four five six seven eight nine ten
+  assert_status 64 "$RUN_STATUS" 'lookup mode should reject more than nine names'
+  assert_contains "$RUN_STDERR" 'lookup mode accepts at most 9 names' 'lookup mode should explain the name limit'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_rejects_depth_with_stdin_lookup() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture_with_input $'stdin-target.sh\n' "$MKSCRIPT_UNDER_TEST" -f 1
+  assert_status 64 "$RUN_STATUS" 'files mode should reject mixing depth with piped lookup input'
+  assert_contains "$RUN_STDERR" 'cannot combine file listing depth with lookup input' 'files mode should explain the depth/stdin lookup conflict'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
 test_files_mode_rejects_global_flag_combination() {
   local sandbox
 
@@ -919,7 +1017,7 @@ test_files_mode_rejects_move_flag_combination() {
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -f -mv source target
   assert_status 64 "$RUN_STATUS" 'files mode should reject the move flag combination'
-  assert_contains "$RUN_STDERR" 'file listing mode accepts at most one depth value' 'the rejected files/move combination should stop before interpreting move paths'
+  assert_contains "$RUN_STDERR" 'cannot combine --files with -mv' 'the rejected files/move combination should be explained'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -1588,6 +1686,12 @@ run_test test_files_mode_respects_depth_zero
 run_test test_files_mode_respects_depth_one
 run_test test_files_mode_skips_unreadable_directories_quietly
 run_test test_files_mode_rejects_invalid_depth
+run_test test_files_mode_looks_up_name_from_arguments
+run_test test_files_mode_looks_up_name_from_stdin
+run_test test_files_mode_looks_up_name_via_xargs
+run_test test_files_mode_returns_one_for_missing_lookup_name
+run_test test_files_mode_rejects_too_many_lookup_names
+run_test test_files_mode_rejects_depth_with_stdin_lookup
 run_test test_files_mode_rejects_global_flag_combination
 run_test test_files_mode_rejects_strict_flag_combination
 run_test test_files_mode_rejects_link_flag_combination

@@ -12,6 +12,7 @@ Usage:
   mkscript [OPTION]... PATH
   mkscript -mv [--global] SOURCE TARGET
   mkscript -f|--files [DEPTH]
+  mkscript -f|--files NAME [NAME ...]
 
 Create a new file from a Bash, Terraform, or Ansible template.
 Global link management applies to Bash templates only.
@@ -21,6 +22,7 @@ Options:
                   use bash, terraform, or ansible
   -f, --files     list matching files under the current tree
                   DEPTH 0-9 limits subfolder scanning; 0 means current folder only
+                  NAME arguments, or piped newline-separated names, perform lookup mode
   -mv             move an existing Bash script to a new path
   -s, --strict    add "set -euo pipefail" after the shebang
   -g, --global    create a global symlink for the new Bash script
@@ -57,6 +59,26 @@ validate_files_depth() {
       fail_usage 'file listing depth must be a single digit from 0 to 9'
       ;;
   esac
+}
+
+is_single_digit() {
+  case ${1-} in
+    [0-9])
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+is_digits_only() {
+  case ${1-} in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+  esac
+
+  return 0
 }
 
 validate_template() {
@@ -482,6 +504,214 @@ kind_for_file() {
   printf 'file\n'
 }
 
+lookup_exact_path() {
+  local requested=$1
+
+  if [ -e "$requested" ] || [ -L "$requested" ]; then
+    absolute_path "$requested"
+    return 0
+  fi
+
+  return 1
+}
+
+lookup_command_path() {
+  local requested=$1
+  local resolved
+
+  resolved=$(type -P -- "$requested" 2>/dev/null || true)
+  if [ -n "$resolved" ]; then
+    absolute_path "$resolved"
+    return 0
+  fi
+
+  return 1
+}
+
+lookup_filename_in_current_tree() {
+  local requested=$1
+  local candidate
+
+  candidate=$(find . \( -type f -o -type l \) -name "$requested" -print 2>/dev/null | LC_ALL=C sort | head -n 1 || true)
+  if [ -n "$candidate" ]; then
+    absolute_path "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
+lookup_filename_with_mdfind() {
+  local requested=$1
+  local candidate
+
+  if ! command -v mdfind >/dev/null 2>&1; then
+    return 1
+  fi
+
+  while IFS= read -r candidate; do
+    if [ "$(base_name "$candidate")" = "$requested" ] && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
+      absolute_path "$candidate"
+      return 0
+    fi
+  done < <(mdfind -name "$requested" 2>/dev/null || true)
+
+  return 1
+}
+
+lookup_filename_with_locate() {
+  local requested=$1
+  local candidate
+
+  if ! command -v locate >/dev/null 2>&1; then
+    return 1
+  fi
+
+  while IFS= read -r candidate; do
+    if [ "$(base_name "$candidate")" = "$requested" ] && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
+      absolute_path "$candidate"
+      return 0
+    fi
+  done < <(locate -- "$requested" 2>/dev/null || true)
+
+  return 1
+}
+
+lookup_filename_with_find() {
+  local requested=$1
+  local system_name
+  local home_dir=${HOME:-}
+  local -a search_roots=()
+
+  system_name=$(platform_name)
+
+  case $system_name in
+    Darwin)
+      search_roots=(/Applications /Library /System /Users /opt /usr /bin /sbin /private/etc /private/var)
+      ;;
+    *)
+      search_roots=(/usr/local /opt /usr /bin /sbin /home /root /etc /var)
+      ;;
+  esac
+
+  if [ -n "$home_dir" ]; then
+    search_roots+=("$home_dir")
+  fi
+
+  find "${search_roots[@]}" \( -type f -o -type l \) -name "$requested" -print 2>/dev/null | LC_ALL=C sort | head -n 1
+}
+
+lookup_requested_name() {
+  local requested=$1
+  local search_name
+  local resolved
+
+  if resolved=$(lookup_exact_path "$requested" 2>/dev/null); then
+    printf 'path\t%s\n' "$resolved"
+    return 0
+  fi
+
+  search_name=$(base_name "$requested")
+
+  if resolved=$(lookup_command_path "$search_name" 2>/dev/null); then
+    printf 'command\t%s\n' "$resolved"
+    return 0
+  fi
+
+  if resolved=$(lookup_filename_in_current_tree "$search_name" 2>/dev/null); then
+    printf 'file\t%s\n' "$resolved"
+    return 0
+  fi
+
+  if resolved=$(lookup_filename_with_mdfind "$search_name" 2>/dev/null); then
+    printf 'file\t%s\n' "$resolved"
+    return 0
+  fi
+
+  if command -v mdfind >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if resolved=$(lookup_filename_with_locate "$search_name" 2>/dev/null); then
+    printf 'file\t%s\n' "$resolved"
+    return 0
+  fi
+
+  resolved=$(lookup_filename_with_find "$search_name" 2>/dev/null || true)
+  if [ -n "$resolved" ]; then
+    if resolved=$(absolute_path "$resolved" 2>/dev/null); then
+      printf 'file\t%s\n' "$resolved"
+      return 0
+    fi
+
+    printf 'file\t%s\n' "$resolved"
+    return 0
+  fi
+
+  return 1
+}
+
+lookup_requested_files() {
+  local terms_file=$1
+  local rows_file
+  local requested
+  local lookup_result
+  local kind
+  local location
+  local found_label
+  local status=0
+
+  rows_file=$(mktemp)
+
+  while IFS= read -r requested; do
+    [ -n "$requested" ] || continue
+
+    found_label='no'
+    kind='missing'
+    location='-'
+
+    if lookup_result=$(lookup_requested_name "$requested" 2>/dev/null); then
+      kind=${lookup_result%%$'\t'*}
+      location=${lookup_result#*$'\t'}
+      found_label='yes'
+    else
+      status=1
+    fi
+
+    printf '%s\t%s\t%s\t%s\n' "$requested" "$found_label" "$kind" "$location" >> "$rows_file"
+  done < "$terms_file"
+
+  awk -F '\t' '
+    BEGIN {
+      query_width = length("QUERY")
+      type_width = length("TYPE")
+      location_width = length("LOCATION")
+    }
+    {
+      rows[NR] = $0
+      if (length($1) > query_width) {
+        query_width = length($1)
+      }
+      if (length($3) > type_width) {
+        type_width = length($3)
+      }
+      if (length($4) > location_width) {
+        location_width = length($4)
+      }
+    }
+    END {
+      printf "%-*s  %-5s  %-*s  %-*s\n", query_width, "QUERY", "FOUND", type_width, "TYPE", location_width, "LOCATION"
+      for (row_number = 1; row_number <= NR; row_number++) {
+        split(rows[row_number], fields, "\t")
+        printf "%-*s  %-5s  %-*s  %-*s\n", query_width, fields[1], fields[2], type_width, fields[3], location_width, fields[4]
+      }
+    }
+  ' "$rows_file"
+
+  rm -f "$rows_file"
+  return "$status"
+}
+
 list_script_files() {
   local depth=${1-}
   local tree_root
@@ -851,6 +1081,12 @@ main() {
   local remove_only=0
   local files_only=0
   local files_depth=''
+  local files_mode='list'
+  local lookup_terms_file=''
+  local stdin_terms_file=''
+  local stdin_term_count=0
+  local total_lookup_terms=0
+  local line=''
   local move_only=0
   local literal_args=0
   local template='bash'
@@ -862,6 +1098,7 @@ main() {
   local target=''
   local link_path=''
   local absolute_target=''
+  local -a positional_args=()
 
   while [ $# -gt 0 ]; do
     if [ "$literal_args" -eq 0 ]; then
@@ -938,37 +1175,61 @@ main() {
       esac
     fi
 
-    positional_count=$((positional_count + 1))
-    case $positional_count in
-      1)
-        first_path=$1
-        ;;
-      2)
-        second_path=$1
-        ;;
-      *)
-        fail_usage "too many paths provided"
-        ;;
-    esac
+    positional_args+=("$1")
+    positional_count=${#positional_args[@]}
     shift
   done
 
   validate_template "$template"
 
   if [ "$files_only" -eq 1 ]; then
-    if [ "$positional_count" -gt 1 ]; then
-      fail_usage "file listing mode accepts at most one depth value"
+    if [ ! -t 0 ]; then
+      stdin_terms_file=$(mktemp)
+      while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        printf '%s\n' "$line" >> "$stdin_terms_file"
+      done
+      stdin_term_count=$(awk 'END { print NR + 0 }' "$stdin_terms_file")
     fi
 
-    if [ "$positional_count" -eq 1 ]; then
-      files_depth=$first_path
+    if [ "$stdin_term_count" -eq 0 ] && [ "$positional_count" -eq 0 ]; then
+      files_mode='list'
+    elif [ "$stdin_term_count" -eq 0 ] && [ "$positional_count" -eq 1 ] && is_single_digit "${positional_args[0]}"; then
+      files_mode='list'
+      files_depth=${positional_args[0]}
       validate_files_depth "$files_depth"
+    elif [ "$stdin_term_count" -eq 0 ] && [ "$positional_count" -eq 1 ] && is_digits_only "${positional_args[0]}"; then
+      rm -f "$stdin_terms_file"
+      fail_usage "file listing depth must be a single digit from 0 to 9"
+    else
+      files_mode='lookup'
+
+      if [ "$stdin_term_count" -gt 0 ] && [ "$positional_count" -eq 1 ] && is_single_digit "${positional_args[0]}"; then
+        rm -f "$stdin_terms_file"
+        fail_usage "cannot combine file listing depth with lookup input"
+      fi
+
+      total_lookup_terms=$((stdin_term_count + positional_count))
+      if [ "$total_lookup_terms" -gt 9 ]; then
+        rm -f "$stdin_terms_file"
+        fail_usage "lookup mode accepts at most 9 names"
+      fi
+
+      lookup_terms_file=$(mktemp)
+      if [ "$stdin_term_count" -gt 0 ]; then
+        cat "$stdin_terms_file" >> "$lookup_terms_file"
+      fi
+      if [ "$positional_count" -gt 0 ]; then
+        printf '%s\n' "${positional_args[@]}" >> "$lookup_terms_file"
+      fi
     fi
   elif [ "$move_only" -eq 1 ]; then
     if [ "$positional_count" -ne 2 ]; then
       fail_usage "move mode requires source and target paths"
     fi
 
+    first_path=${positional_args[0]}
+    second_path=${positional_args[1]}
     source=$first_path
     target=$second_path
   else
@@ -980,6 +1241,7 @@ main() {
       fail_usage "expected exactly one output path"
     fi
 
+    first_path=${positional_args[0]}
     target=$first_path
   fi
 
@@ -1088,7 +1350,15 @@ main() {
   fi
 
   if [ "$files_only" -eq 1 ]; then
+    rm -f "$stdin_terms_file"
+    if [ "$files_mode" = 'lookup' ]; then
+      lookup_requested_files "$lookup_terms_file"
+      rm -f "$lookup_terms_file"
+      exit $?
+    fi
+
     list_script_files "$files_depth"
+    rm -f "$lookup_terms_file"
     exit 0
   fi
 
