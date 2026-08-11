@@ -1,3 +1,10 @@
+mkscript (1.4.1-1) unstable; urgency=medium
+
+  * Fix the -f unreadable-directory test for root-owned RPM %check runs.
+  * Keep GitHub Actions package and release builds passing in cloud builds.
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Tue, 11 Aug 2026 20:10:00 +0000
+
 mkscript (1.4.0-1) unstable; urgency=medium
 
   * Add -f lookup mode for commands and filenames.

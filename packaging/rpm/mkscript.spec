@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.4.0
+Version:        1.4.1
 Release:        1%{?dist}
 Summary:        Create Bash, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,10 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Tue Aug 11 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.1-1
+- Fix the -f unreadable-directory test for root-owned RPM %%check runs
+- Keep GitHub Actions package and release builds passing in cloud builds
+
 * Tue Aug 11 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.0-1
 - Add -f lookup mode for commands and filenames
 - Accept newline-separated lookup names on stdin for -f

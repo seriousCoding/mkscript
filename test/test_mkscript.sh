@@ -823,12 +823,17 @@ test_files_mode_respects_depth_one() {
 
 test_files_mode_skips_unreadable_directories_quietly() {
   local sandbox
+  local running_as_root=0
 
   sandbox=$(mktemp -d)
   mkdir -p "$sandbox/locked"
   printf '#!/usr/bin/env bash\n' > "$sandbox/root.sh"
   printf '#!/usr/bin/env bash\n' > "$sandbox/locked/hidden.sh"
   chmod 000 "$sandbox/locked"
+
+  if [ "$(id -u)" -eq 0 ]; then
+    running_as_root=1
+  fi
 
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -f
@@ -837,7 +842,11 @@ test_files_mode_skips_unreadable_directories_quietly() {
   assert_status 0 "$RUN_STATUS" 'files mode should still succeed when a subdirectory is unreadable'
   assert_grep_count 0 "$RUN_STDERR" 'Operation not permitted|Permission denied' 'files mode should suppress unreadable-directory noise'
   assert_matches "$RUN_STDOUT" '^\./root\.sh +sh +no +no *$' 'files mode should still include readable matches'
-  assert_grep_count 0 "$RUN_STDOUT" 'hidden\.sh' 'files mode should skip matches inside unreadable directories'
+
+  if [ "$running_as_root" -eq 0 ]; then
+    assert_grep_count 0 "$RUN_STDOUT" 'hidden\.sh' 'files mode should skip matches inside unreadable directories'
+  fi
+
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
