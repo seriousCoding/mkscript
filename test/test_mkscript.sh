@@ -866,20 +866,23 @@ test_files_mode_rejects_invalid_depth() {
 test_files_mode_looks_up_name_from_arguments() {
   local sandbox
   local expected_path
+  local expected_dir
 
   sandbox=$(mktemp -d)
   mkdir -p "$sandbox/nested"
   printf '#!/usr/bin/env bash\n' > "$sandbox/nested/lookup-target.sh"
   expected_path=$(cd "$sandbox" && pwd -P)/nested/lookup-target.sh
+  expected_dir=$(cd "$sandbox" && pwd -P)/nested
 
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -f lookup-target.sh
   assert_status 0 "$RUN_STATUS" 'files mode should look up names passed as arguments'
-  assert_matches "$RUN_STDOUT" '^QUERY +FOUND +TYPE +LOCATION *$' 'lookup mode should print a readable table header'
+  assert_matches "$RUN_STDOUT" '^QUERY +FOUND +TYPE +LOCATION +DIRECTORY *$' 'lookup mode should print a readable table header'
   assert_contains "$RUN_STDOUT" 'lookup-target.sh' 'lookup mode should include the requested query name'
   assert_contains "$RUN_STDOUT" 'yes' 'lookup mode should mark found entries clearly'
   assert_contains "$RUN_STDOUT" 'file' 'lookup mode should identify current-tree file matches'
   assert_contains "$RUN_STDOUT" "$expected_path" 'lookup mode should print the resolved file location'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'lookup mode should print the resolved parent directory'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -887,16 +890,19 @@ test_files_mode_looks_up_name_from_arguments() {
 test_files_mode_looks_up_name_from_stdin() {
   local sandbox
   local expected_path
+  local expected_dir
 
   sandbox=$(mktemp -d)
   printf '#!/usr/bin/env bash\n' > "$sandbox/stdin-target.sh"
   expected_path=$(cd "$sandbox" && pwd -P)/stdin-target.sh
+  expected_dir=$(cd "$sandbox" && pwd -P)
 
   cd "$sandbox"
   run_capture_with_input $'stdin-target.sh\n' "$MKSCRIPT_UNDER_TEST" -f
   assert_status 0 "$RUN_STATUS" 'files mode should accept lookup names from stdin'
   assert_contains "$RUN_STDOUT" 'stdin-target.sh' 'stdin lookup mode should include the requested query name'
   assert_contains "$RUN_STDOUT" "$expected_path" 'stdin lookup mode should print the resolved file location'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'stdin lookup mode should print the resolved parent directory'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -904,16 +910,19 @@ test_files_mode_looks_up_name_from_stdin() {
 test_files_mode_looks_up_name_via_xargs() {
   local sandbox
   local expected_path
+  local expected_dir
 
   sandbox=$(mktemp -d)
   printf '#!/usr/bin/env bash\n' > "$sandbox/xargs-target.sh"
   expected_path=$(cd "$sandbox" && pwd -P)/xargs-target.sh
+  expected_dir=$(cd "$sandbox" && pwd -P)
 
   cd "$sandbox"
   run_capture env MKSCRIPT_UNDER_TEST="$MKSCRIPT_UNDER_TEST" bash -lc "printf '%s\n' xargs-target.sh | xargs \"\$MKSCRIPT_UNDER_TEST\" -f"
   assert_status 0 "$RUN_STATUS" 'files mode should work with xargs-fed lookup arguments'
   assert_contains "$RUN_STDOUT" 'xargs-target.sh' 'xargs lookup mode should include the requested query name'
   assert_contains "$RUN_STDOUT" "$expected_path" 'xargs lookup mode should print the resolved file location'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'xargs lookup mode should print the resolved parent directory'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -928,9 +937,11 @@ test_files_mode_returns_one_for_missing_lookup_name() {
   cd "$sandbox"
   run_capture "$MKSCRIPT_UNDER_TEST" -f "$missing_name"
   assert_status 1 "$RUN_STATUS" 'lookup mode should return 1 when a name is not found'
+  assert_matches "$RUN_STDOUT" '^QUERY +FOUND +TYPE +LOCATION +DIRECTORY *$' 'missing lookup mode should keep the readable table header'
   assert_contains "$RUN_STDOUT" "$missing_name" 'missing lookup mode should include the requested query name'
   assert_contains "$RUN_STDOUT" 'missing' 'missing lookup mode should mark missing entries'
   assert_contains "$RUN_STDOUT" '-' 'missing lookup mode should use a placeholder location'
+  assert_matches "$RUN_STDOUT" "${missing_name} +no +missing +- +- *$" 'missing lookup mode should use placeholders for both location columns'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }

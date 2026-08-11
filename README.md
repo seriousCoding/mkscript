@@ -193,7 +193,7 @@ Limit file listing to one subfolder deep:
 mkscript --files 1
 ```
 
-Look up one or more commands or filenames and print the resolved location:
+Look up one or more commands or filenames and print the resolved location plus its parent directory:
 
 ```bash
 mkscript -f bash README.md
@@ -204,6 +204,8 @@ Look up names from a pipe:
 ```bash
 printf '%s\n' bash README.md | mkscript -f
 ```
+
+Lookup mode prints a table with `QUERY`, `FOUND`, `TYPE`, `LOCATION`, and `DIRECTORY`.
 
 This prints a table like:
 

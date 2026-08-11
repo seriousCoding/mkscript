@@ -23,6 +23,7 @@ Options:
   -f, --files     list matching files under the current tree
                   DEPTH 0-9 limits subfolder scanning; 0 means current folder only
                   NAME arguments, or piped newline-separated names, perform lookup mode
+                  and print both the resolved path and its parent directory
   -mv             move an existing Bash script to a new path
   -s, --strict    add "set -euo pipefail" after the shebang
   -g, --global    create a global symlink for the new Bash script
@@ -658,6 +659,7 @@ lookup_requested_files() {
   local lookup_result
   local kind
   local location
+  local directory
   local found_label
   local status=0
 
@@ -669,16 +671,18 @@ lookup_requested_files() {
     found_label='no'
     kind='missing'
     location='-'
+    directory='-'
 
     if lookup_result=$(lookup_requested_name "$requested" 2>/dev/null); then
       kind=${lookup_result%%$'\t'*}
       location=${lookup_result#*$'\t'}
+      directory=$(parent_dir "$location")
       found_label='yes'
     else
       status=1
     fi
 
-    printf '%s\t%s\t%s\t%s\n' "$requested" "$found_label" "$kind" "$location" >> "$rows_file"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$requested" "$found_label" "$kind" "$location" "$directory" >> "$rows_file"
   done < "$terms_file"
 
   awk -F '\t' '
@@ -686,6 +690,7 @@ lookup_requested_files() {
       query_width = length("QUERY")
       type_width = length("TYPE")
       location_width = length("LOCATION")
+      directory_width = length("DIRECTORY")
     }
     {
       rows[NR] = $0
@@ -698,12 +703,15 @@ lookup_requested_files() {
       if (length($4) > location_width) {
         location_width = length($4)
       }
+      if (length($5) > directory_width) {
+        directory_width = length($5)
+      }
     }
     END {
-      printf "%-*s  %-5s  %-*s  %-*s\n", query_width, "QUERY", "FOUND", type_width, "TYPE", location_width, "LOCATION"
+      printf "%-*s  %-5s  %-*s  %-*s  %-*s\n", query_width, "QUERY", "FOUND", type_width, "TYPE", location_width, "LOCATION", directory_width, "DIRECTORY"
       for (row_number = 1; row_number <= NR; row_number++) {
         split(rows[row_number], fields, "\t")
-        printf "%-*s  %-5s  %-*s  %-*s\n", query_width, fields[1], fields[2], type_width, fields[3], location_width, fields[4]
+        printf "%-*s  %-5s  %-*s  %-*s  %-*s\n", query_width, fields[1], fields[2], type_width, fields[3], location_width, fields[4], directory_width, fields[5]
       }
     }
   ' "$rows_file"
