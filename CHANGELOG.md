@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.2] - 2026-08-11
+
+### Changed
+
+- Automate patch releases from successful main CI
+- Add workflow concurrency and lookup directories
+
 ## [1.4.1] - 2026-08-11
 
 ### Fixed

@@ -1,3 +1,10 @@
+mkscript (1.4.2-1) unstable; urgency=medium
+
+  * Automate patch releases from successful main CI
+  * Add workflow concurrency and lookup directories
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Tue, 11 Aug 2026 22:59:50 +0000
+
 mkscript (1.4.1-1) unstable; urgency=medium
 
   * Fix the -f unreadable-directory test for root-owned RPM %check runs.
