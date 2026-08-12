@@ -23,6 +23,8 @@ Options:
   -f, --files     list matching files under the current tree
                   DEPTH 0-9 limits subfolder scanning; 0 means current folder only
                   NAME arguments, or piped newline-separated names, perform lookup mode
+                  quoted shell-style glob patterns like 'install-wifi*' are supported
+                  quote patterns so your shell does not expand them first
                   and print both the resolved path and its parent directory
   -mv             move an existing Bash script to a new path
   -s, --strict    add "set -euo pipefail" after the shebang
@@ -80,6 +82,30 @@ is_digits_only() {
   esac
 
   return 0
+}
+
+is_glob_pattern() {
+  case ${1-} in
+    *[\*\?\[]*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+name_matches_query() {
+  local candidate_name=$1
+  local query=$2
+
+  # shellcheck disable=SC2254
+  case $candidate_name in
+    $query)
+      return 0
+      ;;
+  esac
+
+  return 1
 }
 
 validate_template() {
@@ -508,6 +534,10 @@ kind_for_file() {
 lookup_exact_path() {
   local requested=$1
 
+  if is_glob_pattern "$requested"; then
+    return 1
+  fi
+
   if [ -e "$requested" ] || [ -L "$requested" ]; then
     absolute_path "$requested"
     return 0
@@ -519,6 +549,33 @@ lookup_exact_path() {
 lookup_command_path() {
   local requested=$1
   local resolved
+  local path_value=${PATH:-}
+  local path_entry
+  local candidate
+  local old_ifs=$IFS
+
+  if is_glob_pattern "$requested"; then
+    IFS=:
+    for path_entry in $path_value; do
+      if [ -z "$path_entry" ]; then
+        path_entry=.
+      fi
+
+      if [ ! -d "$path_entry" ]; then
+        continue
+      fi
+
+      while IFS= read -r candidate; do
+        if [ -x "$candidate" ] && [ ! -d "$candidate" ]; then
+          IFS=$old_ifs
+          absolute_path "$candidate"
+          return 0
+        fi
+      done < <(find "$path_entry" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) -name "$requested" -print 2>/dev/null | LC_ALL=C sort)
+    done
+    IFS=$old_ifs
+    return 1
+  fi
 
   resolved=$(type -P -- "$requested" 2>/dev/null || true)
   if [ -n "$resolved" ]; then
@@ -551,7 +608,7 @@ lookup_filename_with_mdfind() {
   fi
 
   while IFS= read -r candidate; do
-    if [ "$(base_name "$candidate")" = "$requested" ] && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
+    if name_matches_query "$(base_name "$candidate")" "$requested" && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
       absolute_path "$candidate"
       return 0
     fi
@@ -569,7 +626,7 @@ lookup_filename_with_locate() {
   fi
 
   while IFS= read -r candidate; do
-    if [ "$(base_name "$candidate")" = "$requested" ] && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
+    if name_matches_query "$(base_name "$candidate")" "$requested" && { [ -f "$candidate" ] || [ -L "$candidate" ] || [ -x "$candidate" ]; }; then
       absolute_path "$candidate"
       return 0
     fi
@@ -629,7 +686,7 @@ lookup_requested_name() {
     return 0
   fi
 
-  if command -v mdfind >/dev/null 2>&1; then
+  if ! is_glob_pattern "$search_name" && command -v mdfind >/dev/null 2>&1; then
     return 1
   fi
 

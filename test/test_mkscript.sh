@@ -579,6 +579,8 @@ test_help_output() {
   assert_contains "$RUN_STDOUT" '-f, --files' 'help should document file listing mode'
   assert_contains "$RUN_STDOUT" 'DEPTH 0-9 limits subfolder scanning; 0 means current folder only' 'help should explain file listing depth'
   assert_contains "$RUN_STDOUT" 'NAME arguments, or piped newline-separated names, perform lookup mode' 'help should explain file lookup mode'
+  assert_contains "$RUN_STDOUT" "quoted shell-style glob patterns like 'install-wifi*' are supported" 'help should document quoted glob lookup support'
+  assert_contains "$RUN_STDOUT" 'quote patterns so your shell does not expand them first' 'help should explain why glob queries should be quoted'
   assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
   assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
@@ -923,6 +925,81 @@ test_files_mode_looks_up_name_via_xargs() {
   assert_contains "$RUN_STDOUT" 'xargs-target.sh' 'xargs lookup mode should include the requested query name'
   assert_contains "$RUN_STDOUT" "$expected_path" 'xargs lookup mode should print the resolved file location'
   assert_contains "$RUN_STDOUT" "$expected_dir" 'xargs lookup mode should print the resolved parent directory'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_looks_up_glob_name_from_arguments() {
+  local sandbox
+  local expected_path
+  local expected_dir
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/nested"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/nested/install-wifi-helper.sh"
+  expected_path=$(cd "$sandbox" && pwd -P)/nested/install-wifi-helper.sh
+  expected_dir=$(cd "$sandbox" && pwd -P)/nested
+
+  cd "$sandbox"
+  run_capture env PATH='/usr/bin:/bin' "$MKSCRIPT_UNDER_TEST" -f 'install-wifi*'
+  assert_status 0 "$RUN_STATUS" 'files mode should allow quoted glob lookup arguments'
+  assert_contains "$RUN_STDOUT" 'install-wifi*' 'glob lookup mode should keep the original query text in output'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'glob lookup mode should resolve the matching file location'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'glob lookup mode should print the matching parent directory'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_looks_up_globbed_command_from_path() {
+  local sandbox
+  local expected_path
+  local expected_dir
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/bin"
+  printf '#!/usr/bin/env bash\n' > "$sandbox/bin/install-wifi-helper"
+  chmod 755 "$sandbox/bin/install-wifi-helper"
+  expected_path=$(cd "$sandbox" && pwd -P)/bin/install-wifi-helper
+  expected_dir=$(cd "$sandbox" && pwd -P)/bin
+
+  cd "$sandbox"
+  run_capture env PATH="$sandbox/bin:/usr/bin:/bin" "$MKSCRIPT_UNDER_TEST" -f 'install-wifi*'
+  assert_status 0 "$RUN_STATUS" 'glob lookup mode should match commands on PATH'
+  assert_contains "$RUN_STDOUT" 'command' 'glob lookup mode should classify PATH matches as commands'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'glob lookup mode should print the matched command path'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'glob lookup mode should print the matched command parent directory'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_files_mode_glob_lookup_falls_back_past_empty_mdfind() {
+  local sandbox
+  local tools_dir
+  local expected_path
+  local expected_dir
+
+  sandbox=$(mktemp -d)
+  tools_dir="$sandbox/tools"
+  mkdir -p "$sandbox/work" "$sandbox/external" "$tools_dir"
+  printf 'notes\n' > "$sandbox/external/install-wifi-notes.txt"
+  expected_path=$(cd "$sandbox" && pwd -P)/external/install-wifi-notes.txt
+  expected_dir=$(cd "$sandbox" && pwd -P)/external
+
+  cat > "$tools_dir/mdfind" <<EOF
+#!/usr/bin/env bash
+exit 0
+EOF
+  cat > "$tools_dir/locate" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "$expected_path"
+EOF
+  chmod 755 "$tools_dir/mdfind" "$tools_dir/locate"
+
+  cd "$sandbox/work"
+  run_capture env PATH="$tools_dir:/usr/bin:/bin" "$MKSCRIPT_UNDER_TEST" -f 'install-wifi*'
+  assert_status 0 "$RUN_STATUS" 'glob lookup mode should continue past empty mdfind results'
+  assert_contains "$RUN_STDOUT" "$expected_path" 'glob lookup mode should still resolve locate fallback results'
+  assert_contains "$RUN_STDOUT" "$expected_dir" 'glob lookup mode should print the locate fallback parent directory'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -1709,6 +1786,9 @@ run_test test_files_mode_rejects_invalid_depth
 run_test test_files_mode_looks_up_name_from_arguments
 run_test test_files_mode_looks_up_name_from_stdin
 run_test test_files_mode_looks_up_name_via_xargs
+run_test test_files_mode_looks_up_glob_name_from_arguments
+run_test test_files_mode_looks_up_globbed_command_from_path
+run_test test_files_mode_glob_lookup_falls_back_past_empty_mdfind
 run_test test_files_mode_returns_one_for_missing_lookup_name
 run_test test_files_mode_rejects_too_many_lookup_names
 run_test test_files_mode_rejects_depth_with_stdin_lookup

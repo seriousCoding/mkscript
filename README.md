@@ -286,18 +286,27 @@ mkscript site.yml --template ansible
 - `-f 1` through `-f 9` include that many subfolder levels.
 - `-f name1 [name2 ...]` switches to lookup mode for one to nine names.
 - `printf '%s\n' name1 name2 | mkscript -f` also uses lookup mode from newline-separated stdin.
+- Quoted shell-style glob patterns like `mkscript -f 'install-wifi*'` are supported in lookup mode.
+- Quote glob patterns so your shell passes them to `mkscript` unchanged.
 - A file is listed if it ends with `.sh`, is executable, or is the local target of a managed global symlink.
 - `PATH` shows the relative file path.
 - `KIND` is `sh`, `exec`, `sh+exec`, or `file`.
 - `EXEC` shows whether the local file is executable.
 - `GLOBAL` shows whether a managed global symlink points to that local file.
 - Unreadable folders are skipped quietly so protected macOS paths do not clutter the output.
-- Lookup mode prints `QUERY`, `FOUND`, `TYPE`, and `LOCATION`.
-- Lookup mode checks an exact path first, then `PATH` commands, then current-tree and wider filename matches.
+- Lookup mode prints `QUERY`, `FOUND`, `TYPE`, `LOCATION`, and `DIRECTORY`.
+- Lookup mode checks an exact path first, then exact or pattern command matches on `PATH`, then current-tree and wider filename matches.
+- Lookup mode returns the first resolved match for each query.
 - Lookup mode returns `0` only when every requested name is found, and `1` when any requested name is missing.
 - Lookup mode accepts at most nine names total across arguments and piped stdin.
 - A single numeric argument from `0` to `9` keeps its depth meaning; if you need lookup input from stdin, do not combine it with a depth argument.
 - `-f` is read-only and cannot be combined with `--template`, `-g`, `-mv`, `-s`, `-l`, `-c`, or `-r`.
+
+Quoted glob lookup example:
+
+```bash
+mkscript -f 'install-wifi*'
+```
 
 ## Move mode notes
 

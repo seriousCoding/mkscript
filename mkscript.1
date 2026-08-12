@@ -113,10 +113,16 @@ or
 .B \-\-files
 receives one to nine names from arguments or newline-separated standard input,
 .B mkscript
-switches to lookup mode and prints the resolved location for each requested name.
-Lookup mode checks an exact path first, then commands on
+switches to lookup mode and prints the resolved location and parent directory for each requested name.
+Lookup names may be exact names or quoted shell-style glob patterns such as
+.BR 'install-wifi*' .
+Quote pattern arguments so the shell does not expand them before
+.B mkscript
+receives them.
+Lookup mode checks an exact path first, then exact or pattern command matches on
 .BR PATH ,
 then current-tree and wider filename matches.
+Lookup mode returns the first resolved match for each query.
 .PP
 .B \-mv
 moves an existing local Bash script to a new path, preserves its permission mode,
@@ -153,7 +159,10 @@ value must be a single digit from 0 through 9, where 0 means the current directo
 When one to nine
 .I name
 arguments are supplied, or when newline-separated names are piped to standard input,
-lookup mode prints a table with query, found state, result type, and resolved location.
+lookup mode prints a table with query, found state, result type, resolved location, and parent directory.
+Quoted shell-style glob patterns such as
+.BR 'install-wifi*'
+are supported in lookup mode.
 .TP
 .B \-s, \-\-strict
 Add
@@ -241,6 +250,11 @@ mkscript --files 1
 Look up one or more names and print the resolved location plus its parent directory:
 .EX
 mkscript -f bash README.md
+.EE
+.TP
+Look up a command or filename with a quoted glob pattern:
+.EX
+mkscript -f 'install-wifi*'
 .EE
 .TP
 Look up newline-separated names from standard input:
