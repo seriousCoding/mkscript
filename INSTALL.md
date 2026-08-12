@@ -1,6 +1,6 @@
 # Install mkscript
 
-`mkscript` creates executable Bash script skeletons and optional user-bin shortcuts on macOS and Linux.
+`mkscript` creates executable script skeletons and optional user-bin shortcuts on Windows, macOS, and Linux.
 
 Quick links: [Public install page](https://seriouscoding.github.io/install/) | [GitHub releases](https://github.com/seriousCoding/mkscript/releases) | [Latest checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Homebrew tap](https://github.com/seriousCoding/homebrew-tap)
 
@@ -19,7 +19,39 @@ mkscript --version
 mkscript --help
 ```
 
-If you plan to use `-g` or `-l`, make sure your chosen personal bin directory is on `PATH`. `mkscript` prefers `~/.local/bin`, `~/bin`, or another personal `*local*/bin` directory already present on `PATH`.
+If you plan to use `-g`, make sure your chosen personal bin directory is on `PATH`. `mkscript` prefers `~/.local/bin`, `~/bin`, or another personal `*local*/bin` directory already present on `PATH`.
+
+## Install mkscript on Windows
+
+With WinGet (after its initial catalog submission is accepted):
+
+```powershell
+winget install --id seriousCoding.mkscript --exact
+```
+
+With Chocolatey (after community moderation):
+
+```powershell
+choco install mkscript -y
+```
+
+Directly from the latest GitHub release:
+
+```powershell
+irm https://raw.githubusercontent.com/seriousCoding/mkscript/main/install.ps1 | iex
+```
+
+The direct bootstrap downloads the stable Windows ZIP, verifies it against the release `SHA256SUMS`, and runs the included installer. For a manual install instead:
+
+```powershell
+Invoke-WebRequest https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript-windows-x64.zip -OutFile mkscript.zip
+Expand-Archive mkscript.zip -DestinationPath .\mkscript-package -Force
+.\mkscript-package\install.cmd
+```
+
+The installer copies the command to `%LOCALAPPDATA%\Programs\mkscript` and adds that directory plus `%LOCALAPPDATA%\mkscript\bin` to your user `PATH`. Open a new terminal afterward. Windows does not require Developer Mode or symlink privileges. `mkscript demo` writes `demo.cmd` by default.
+
+Uninstall with `%LOCALAPPDATA%\Programs\mkscript\uninstall.cmd`.
 
 ## Install mkscript on Ubuntu and Debian
 
@@ -102,6 +134,12 @@ Verify a Linux download:
 ```bash
 sha256sum mkscript.deb
 sha256sum mkscript.rpm
+```
+
+On Windows:
+
+```powershell
+Get-FileHash .\mkscript-windows-x64.zip -Algorithm SHA256
 ```
 
 Current release documents:

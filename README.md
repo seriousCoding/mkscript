@@ -1,6 +1,6 @@
 # mkscript
 
-`mkscript` creates Bash, Terraform, and Ansible starter files without overwriting existing paths.
+`mkscript` creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths. It has native Bash implementations on Linux/macOS and a native PowerShell implementation on Windows.
 
 Quick links: [`INSTALL.md`](INSTALL.md) | [Public install site](https://seriouscoding.github.io/install/) | [Releases](https://github.com/seriousCoding/mkscript/releases) | [Checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Official packaging guide](docs/official-package-inclusion.md)
 
@@ -18,6 +18,22 @@ Debian and Ubuntu:
 curl -LO https://github.com/seriousCoding/mkscript/releases/latest/download/mkscript.deb
 sudo apt install ./mkscript.deb
 ```
+
+Windows (PowerShell):
+
+```powershell
+winget install --id seriousCoding.mkscript --exact
+# or
+choco install mkscript -y
+```
+
+The catalog commands become available after their initial WinGet and Chocolatey submissions are approved. The direct installer works immediately from a published GitHub release:
+
+```powershell
+irm https://raw.githubusercontent.com/seriousCoding/mkscript/main/install.ps1 | iex
+```
+
+Open a new terminal after a direct installation, then run `mkscript --version`. To remove it later, run `%LOCALAPPDATA%\Programs\mkscript\uninstall.cmd`.
 
 Fedora:
 
@@ -45,6 +61,7 @@ For versioned package links, checksum verification, and platform-specific notes,
 ## Features
 
 - Creates Bash, Terraform, or Ansible starter files at the path you request.
+- On Windows, uses the native PowerShell implementation and creates a `.cmd` script by default (adding the extension when omitted).
 - Uses Bash by default and writes `#!/usr/bin/env bash` plus a default comment header with script name, blank description, creation date, and creator.
 - Adds `set -euo pipefail` when you pass `-s` or `--strict` with the Bash template.
 - Can create a Terraform starter file with `--template terraform`.
@@ -57,6 +74,7 @@ For versioned package links, checksum verification, and platform-specific notes,
 - Can remove an existing global Bash shortcut with `-r`.
 - Refuses to overwrite existing files, symlinks, or directories.
 - Ships with tests, a man page, Debian packaging, RPM packaging, Homebrew support, and GitHub Actions automation.
+- Generates WinGet and Chocolatey metadata and can publish catalog updates from tagged releases when repository credentials are configured.
 
 ## Usage
 
@@ -138,6 +156,8 @@ mkscript test -g
 ```
 
 This creates `./test` and a symlink at `~/.local/bin/test` pointing back to it.
+
+On Windows this creates `test.cmd` plus a command wrapper in `%LOCALAPPDATA%\mkscript\bin`. Add that directory to `PATH` once; wrappers do not require symlink privileges.
 
 Flags can be mixed in either order:
 
@@ -254,6 +274,9 @@ mkscript site.yml --template ansible
 - `73`: could not create the requested script safely
 
 ## Global mode notes
+
+- Linux and macOS create POSIX symlinks and otherwise retain their existing behavior.
+- Windows creates managed `.cmd` wrappers in `%LOCALAPPDATA%\mkscript\bin` (override with `MKSCRIPT_BIN_DIR`). `-c`, `-r`, and `-mv` inspect, remove, and update those wrappers.
 
 - `-g` and `--global` use the script basename for the shortcut name.
 - Global shortcuts are supported only for the Bash template.

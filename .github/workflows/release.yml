@@ -19,8 +19,24 @@ permissions:
   contents: write
 
 jobs:
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test and package Windows implementation
+        shell: powershell
+        run: |
+          ./test/test_mkscript_windows.ps1
+          ./scripts/build-windows-package.ps1
+          ./scripts/build-windows-package-managers.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mkscript-windows
+          path: dist/**
+
   publish:
     runs-on: ubuntu-latest
+    needs: windows-package
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
@@ -67,6 +83,12 @@ jobs:
       - name: Write release aliases
         run: ./scripts/write-release-aliases.sh dist
 
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mkscript-windows
+          path: dist
+
       - name: Write checksums
         run: ./scripts/write-checksums.sh dist
 
@@ -86,3 +108,43 @@ jobs:
             exit 0
           fi
           ./scripts/publish-homebrew-tap.sh dist/mkscript.rb seriousCoding/homebrew-tap
+
+  publish-chocolatey:
+    runs-on: windows-latest
+    needs: publish
+    env:
+      CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mkscript-windows
+          path: dist
+      - name: Publish Chocolatey package when configured
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CHOCOLATEY_API_KEY)) {
+            Write-Host 'CHOCOLATEY_API_KEY is not configured; skipping Chocolatey publish.'
+            exit 0
+          }
+          $package = Get-ChildItem dist -Filter '*.nupkg' -Recurse | Select-Object -First 1
+          if (-not $package) { throw 'Chocolatey package artifact was not found.' }
+          choco push $package.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+
+  publish-winget-update:
+    runs-on: windows-latest
+    needs: publish
+    env:
+      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Submit WinGet update when configured
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
+            Write-Host 'WINGET_CREATE_GITHUB_TOKEN is not configured; skipping WinGet update.'
+            exit 0
+          }
+          $version = (Get-Content VERSION -Raw).Trim()
+          $url = "https://github.com/seriousCoding/mkscript/releases/download/v$version/mkscript-$version-windows-x64.zip"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe update seriousCoding.mkscript -u $url -v $version -t $env:WINGET_CREATE_GITHUB_TOKEN --submit

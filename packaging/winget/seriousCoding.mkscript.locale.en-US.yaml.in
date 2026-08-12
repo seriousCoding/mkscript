@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+PackageIdentifier: seriousCoding.mkscript
+PackageVersion: '@VERSION@'
+PackageLocale: en-US
+Publisher: seriousCoding
+PublisherUrl: https://github.com/seriousCoding
+PublisherSupportUrl: https://github.com/seriousCoding/mkscript/issues
+PackageName: mkscript
+PackageUrl: https://github.com/seriousCoding/mkscript
+License: MIT
+LicenseUrl: https://github.com/seriousCoding/mkscript/blob/main/LICENSE
+ShortDescription: Create command-script, Bash, Terraform, and Ansible starter files safely.
+Moniker: mkscript
+Tags:
+  - ansible
+  - bash
+  - cmd
+  - powershell
+  - terraform
+ReleaseNotesUrl: https://github.com/seriousCoding/mkscript/releases/tag/v@VERSION@
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

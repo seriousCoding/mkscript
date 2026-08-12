@@ -11,6 +11,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test native Windows implementation
+        shell: powershell
+        run: ./test/test_mkscript_windows.ps1
+
   test:
     strategy:
       fail-fast: false

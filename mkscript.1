@@ -1,4 +1,4 @@
-.TH MKSCRIPT 1 "2026-08-11" "mkscript 1.4.4" "User Commands"
+.TH MKSCRIPT 1 "2026-08-12" "mkscript 1.5.0" "User Commands"
 .SH NAME
 mkscript \- create Bash, Terraform, and Ansible starter files safely
 .SH SYNOPSIS
@@ -31,6 +31,10 @@ mkscript \- create Bash, Terraform, and Ansible starter files safely
 .B mkscript
 creates a new file at the requested path from a Bash, Terraform, or Ansible starter template.
 The default template is Bash.
+.PP
+On native Windows, the PowerShell implementation creates a .cmd file by default
+and uses managed .cmd wrappers in the user bin directory instead of POSIX symlinks.
+Linux and macOS behavior is unchanged.
 For Bash files,
 .B mkscript
 writes the standard shebang followed by a small comment header

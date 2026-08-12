@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.4.4
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        Create Bash, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,9 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.0-1
+- Add native Windows support and Windows package-manager automation
+
 * Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.4-1
 - Simplify global linking workflow
 

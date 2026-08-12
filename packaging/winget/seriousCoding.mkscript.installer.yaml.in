@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+PackageIdentifier: seriousCoding.mkscript
+PackageVersion: '@VERSION@'
+InstallerType: zip
+NestedInstallerType: portable
+Commands:
+  - mkscript
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    Scope: user
+    InstallerUrl: https://github.com/seriousCoding/mkscript/releases/download/v@VERSION@/mkscript-@VERSION@-windows-x64.zip
+    InstallerSha256: '@SHA256@'
+    NestedInstallerFiles:
+      - RelativeFilePath: mkscript.exe
+        PortableCommandAlias: mkscript
+ManifestType: installer
+ManifestVersion: 1.12.0

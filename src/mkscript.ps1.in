@@ -1,0 +1,200 @@
+#Requires -Version 5.1
+[CmdletBinding(PositionalBinding = $false)]
+param([Parameter(ValueFromRemainingArguments = $true)][string[]] $Arguments)
+
+$Version = '@VERSION@'
+$Name = 'mkscript'
+$UsageError = 64
+$CreateError = 73
+
+function Stop-Mkscript([string] $Message, [int] $Code = $CreateError) {
+    [Console]::Error.WriteLine("${Name}: $Message")
+    exit $Code
+}
+
+function Show-Help {
+@'
+Usage:
+  mkscript [OPTION]... PATH
+  mkscript -mv [--global] SOURCE TARGET
+  mkscript -f|--files [DEPTH]
+  mkscript -f|--files NAME [NAME ...]
+
+Create a new Windows command, Terraform, or Ansible file.
+Global wrapper management applies to command scripts only.
+
+Options:
+  -t, --template TEMPLATE  use cmd, bash, terraform, or ansible
+  -f, --files              list or look up native Windows files/commands
+  -mv                      move a command script and update its wrapper
+  -s, --strict             enable delayed expansion in a generated .cmd file
+  -g, --global             create a .cmd wrapper in the user bin directory
+  -c                       check whether the expected wrapper exists
+  -r                       remove the expected wrapper after confirmation
+      --help               display this help and exit
+      --version            output version information and exit
+'@
+}
+
+function Resolve-FullPath([string] $Path) {
+    return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+}
+
+function Get-UserBin {
+    if ($env:MKSCRIPT_BIN_DIR) { return Resolve-FullPath $env:MKSCRIPT_BIN_DIR }
+    if (-not $env:LOCALAPPDATA) { Stop-Mkscript 'LOCALAPPDATA is not set; cannot determine the user bin directory' }
+    return [IO.Path]::Combine($env:LOCALAPPDATA, 'mkscript', 'bin')
+}
+
+function Get-CommandTarget([string] $Path) {
+    if ([IO.Path]::GetExtension($Path)) { return $Path }
+    return "$Path.cmd"
+}
+
+function Get-WrapperPath([string] $Target) {
+    $leaf = [IO.Path]::GetFileNameWithoutExtension($Target)
+    return [IO.Path]::Combine((Get-UserBin), "$leaf.cmd")
+}
+
+function Get-WrapperTarget([string] $Wrapper) {
+    if (-not (Test-Path -LiteralPath $Wrapper -PathType Leaf)) { return $null }
+    $first = Get-Content -LiteralPath $Wrapper -TotalCount 1 -ErrorAction SilentlyContinue
+    if ($first -match '^@rem mkscript-wrapper: (.+)$') { return $Matches[1] }
+    return $null
+}
+
+function Assert-WrapperAvailable([string] $Wrapper) {
+    if (Test-Path -LiteralPath $Wrapper) { Stop-Mkscript "refusing to overwrite existing global path: $Wrapper" }
+}
+
+function Write-Wrapper([string] $Target, [switch] $Replace) {
+    $absolute = Resolve-FullPath $Target
+    $wrapper = Get-WrapperPath $Target
+    $dir = Split-Path -Parent $wrapper
+    if ((Test-Path -LiteralPath $dir) -and -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        Stop-Mkscript "global bin directory is not a directory: $dir"
+    }
+    if (-not $Replace) { Assert-WrapperAvailable $wrapper }
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $ext = [IO.Path]::GetExtension($absolute).ToLowerInvariant()
+    $invoke = if ($ext -eq '.ps1') {
+        '@powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + ($absolute -replace '"','""') + '" %*'
+    } else { '@call "' + ($absolute -replace '"','""') + '" %*' }
+    @("@rem mkscript-wrapper: $absolute", '@echo off', $invoke, '@exit /b %errorlevel%') |
+        Set-Content -LiteralPath $wrapper -Encoding ASCII
+    Write-Output "Created wrapper '$wrapper' for '$absolute'"
+}
+
+function Confirm([string] $Prompt) {
+    $answer = Read-Host "$Prompt [y/N]"
+    return $answer -match '^(?i:y|yes)$'
+}
+
+function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
+    $parent = Split-Path -Parent (Resolve-FullPath $Target)
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) { Stop-Mkscript "parent directory does not exist: $parent" }
+    if (Test-Path -LiteralPath $Target) { Stop-Mkscript "refusing to overwrite existing path: $Target" }
+    $leaf = Split-Path -Leaf $Target
+    $creator = [Environment]::UserName
+    $date = Get-Date -Format 'yyyy-MM-dd'
+    switch ($Template) {
+        { $_ -in 'cmd','bash' } {
+            $lines = @('@echo off', "rem Script: $leaf", 'rem Description:', "rem Created: $date", "rem Creator: $creator")
+            if ($Strict) { $lines += 'setlocal EnableExtensions EnableDelayedExpansion' }
+        }
+        'terraform' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', 'terraform {', '  required_version = ">= 1.0.0"', '}') }
+        'ansible' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', '---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
+        default { Stop-Mkscript "unsupported template: $Template (expected cmd, bash, terraform, or ansible)" $UsageError }
+    }
+    $lines | Set-Content -LiteralPath $Target -Encoding UTF8
+    Write-Output "Created '$Target'"
+}
+
+function Find-Files([string[]] $Terms) {
+    if ($Terms.Count -eq 0 -or ($Terms.Count -eq 1 -and $Terms[0] -match '^[0-9]$')) {
+        $depth = if ($Terms.Count) { [int]$Terms[0] } else { [int]::MaxValue }
+        $root = (Get-Location).Path
+        Get-ChildItem -File -Recurse -ErrorAction SilentlyContinue | Where-Object {
+            $relative = $_.FullName.Substring($root.Length).TrimStart('\')
+            (($relative -split '\\').Count - 1) -le $depth -and $_.Extension -in '.cmd','.bat','.ps1','.sh'
+        } | Sort-Object FullName | Format-Table @{n='PATH';e={$_.FullName}}, @{n='KIND';e={$_.Extension.TrimStart('.')}} -AutoSize
+        return
+    }
+    $failed = $false
+    $rows = foreach ($term in $Terms) {
+        $item = Get-Item -LiteralPath $term -ErrorAction SilentlyContinue
+        $kind = 'path'
+        if (-not $item) {
+            $command = Get-Command $term -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($command) { $item = Get-Item -LiteralPath $command.Source; $kind = 'command' }
+        }
+        if (-not $item) {
+            $item = Get-ChildItem -File -Recurse -Filter $term -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -First 1
+            $kind = 'file'
+        }
+        if ($item) { [pscustomobject]@{ QUERY=$term; FOUND='yes'; TYPE=$kind; LOCATION=$item.FullName; DIRECTORY=$item.DirectoryName } }
+        else { $failed=$true; [pscustomobject]@{ QUERY=$term; FOUND='no'; TYPE='missing'; LOCATION='-'; DIRECTORY='-' } }
+    }
+    $rows | Format-Table -AutoSize
+    if ($failed) { exit 1 }
+}
+
+$template = 'cmd'; $strict = $false; $global = $false; $mode = 'create'; $paths = @()
+for ($i=0; $i -lt $Arguments.Count; $i++) {
+    $argument=$Arguments[$i]
+    if ($argument -eq '--help') { Show-Help; exit 0 }
+    if ($argument -eq '--version') { Write-Output "$Name $Version"; exit 0 }
+    if ($argument -in '-t','--template') { if (++$i -ge $Arguments.Count) { Stop-Mkscript 'missing template value' $UsageError }; $template=$Arguments[$i]; continue }
+    if ($argument -in '-s','--strict') { $strict=$true; continue }
+    if ($argument -in '-g','--global') { $global=$true; continue }
+    if ($argument -in '-f','--files') { $mode='files'; continue }
+    if ($argument -eq '-mv') { $mode='move'; continue }
+    if ($argument -eq '-c') { $mode='check'; continue }
+    if ($argument -eq '-r') { $mode='remove'; continue }
+    if ($argument -like '-*') { Stop-Mkscript "unrecognized option: $argument" $UsageError }
+    $paths += $argument
+}
+
+if ($mode -eq 'files') { Find-Files $paths; exit 0 }
+if ($mode -eq 'move') {
+    if ($paths.Count -ne 2 -or $strict -or $template -notin 'cmd','bash') { Stop-Mkscript 'invalid -mv option combination' $UsageError }
+    $source=Resolve-FullPath (Get-CommandTarget $paths[0]); $target=Get-CommandTarget $paths[1]
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { Stop-Mkscript "cannot move missing path: $($paths[0])" }
+    if (Test-Path -LiteralPath $target) { Stop-Mkscript "refusing to overwrite existing path: $target" }
+    $oldWrapper=Get-WrapperPath $source; $wasGlobal=((Get-WrapperTarget $oldWrapper) -eq $source)
+    $newWrapper=Get-WrapperPath $target
+    if (($global -or $wasGlobal) -and $newWrapper -ne $oldWrapper) { Assert-WrapperAvailable $newWrapper }
+    Move-Item -LiteralPath $source -Destination $target
+    if ($wasGlobal) { Remove-Item -LiteralPath $oldWrapper -Force }
+    if ($global -or $wasGlobal) { Write-Wrapper $target -Replace:($newWrapper -eq $oldWrapper) }
+    Write-Output "Moved '$source' to '$(Resolve-FullPath $target)'"; exit 0
+}
+if ($paths.Count -ne 1) { Stop-Mkscript 'expected exactly one output path' $UsageError }
+$target = if ($template -in 'cmd','bash') { Get-CommandTarget $paths[0] } else { $paths[0] }
+$wrapper = Get-WrapperPath $target
+if ($mode -eq 'check') {
+    if ($global -or $strict) { Stop-Mkscript 'invalid -c option combination' $UsageError }
+    $wrapped=Get-WrapperTarget $wrapper
+    if ($wrapped) { Write-Output "Wrapper exists: $wrapper -> $wrapped"; exit 0 }
+    if (Test-Path -LiteralPath $wrapper) { Stop-Mkscript "global path exists but is not an mkscript wrapper: $wrapper" }
+    Write-Output "Wrapper does not exist: $wrapper"; exit 1
+}
+if ($mode -eq 'remove') {
+    $wrapped=Get-WrapperTarget $wrapper
+    if (-not $wrapped) { if (Test-Path $wrapper) { Stop-Mkscript "global path exists but is not an mkscript wrapper: $wrapper" }; Write-Output "Wrapper does not exist: $wrapper"; exit 1 }
+    if (-not (Confirm "Remove wrapper '$wrapper'?")) { Stop-Mkscript 'wrapper removal cancelled' }
+    Remove-Item -LiteralPath $wrapper -Force; Write-Output "Removed wrapper '$wrapper'"; exit 0
+}
+if ($template -notin 'cmd','bash','terraform','ansible') { Stop-Mkscript "unsupported template: $template (expected cmd, bash, terraform, or ansible)" $UsageError }
+if ($strict -and $template -notin 'cmd','bash') { Stop-Mkscript '--strict is only supported with the cmd template' $UsageError }
+if ($global -and $template -notin 'cmd','bash') { Stop-Mkscript '--global is only supported with the cmd template' $UsageError }
+if (Test-Path -LiteralPath $target) {
+    if (-not $global) { Stop-Mkscript "refusing to overwrite existing path: $target" }
+    if ($strict) { Stop-Mkscript 'cannot combine --strict with --global when wrapping an existing path' $UsageError }
+    Assert-WrapperAvailable $wrapper
+    if (-not (Confirm "Create wrapper '$wrapper' for '$target'?")) { Stop-Mkscript 'wrapper creation cancelled' }
+    Write-Wrapper $target; exit 0
+}
+if ($global) { Assert-WrapperAvailable $wrapper }
+Write-NewFile $target $template $strict
+if ($global) { Write-Wrapper $target }

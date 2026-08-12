@@ -1,0 +1,17 @@
+$ErrorActionPreference = 'Stop'
+$toolsDirectory = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$installDirectory = Join-Path $toolsDirectory 'mkscript'
+$wrapperDirectory = Join-Path $env:LOCALAPPDATA 'mkscript\bin'
+
+$packageArguments = @{
+    PackageName = $env:ChocolateyPackageName
+    Url = 'https://github.com/seriousCoding/mkscript/releases/download/v@VERSION@/mkscript-@VERSION@-windows-x64.zip'
+    UnzipLocation = $installDirectory
+    Checksum = '@SHA256@'
+    ChecksumType = 'sha256'
+}
+
+Install-ChocolateyZipPackage @packageArguments
+Install-BinFile -Name 'mkscript' -Path (Join-Path $installDirectory 'mkscript.cmd')
+New-Item -ItemType Directory -Path $wrapperDirectory -Force | Out-Null
+Install-ChocolateyPath -Path $wrapperDirectory -PathType User

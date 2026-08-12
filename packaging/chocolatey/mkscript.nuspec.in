@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>mkscript</id>
+    <version>@VERSION@</version>
+    <title>mkscript</title>
+    <authors>seriousCoding</authors>
+    <owners>seriousCoding</owners>
+    <projectUrl>https://github.com/seriousCoding/mkscript</projectUrl>
+    <packageSourceUrl>https://github.com/seriousCoding/mkscript</packageSourceUrl>
+    <licenseUrl>https://github.com/seriousCoding/mkscript/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/seriousCoding/mkscript</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/seriousCoding/mkscript/issues</bugTrackerUrl>
+    <tags>mkscript bash cmd powershell terraform ansible cli</tags>
+    <summary>Create script and infrastructure starter files safely.</summary>
+    <description>mkscript creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths.</description>
+    <releaseNotes>https://github.com/seriousCoding/mkscript/releases/tag/v@VERSION@</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

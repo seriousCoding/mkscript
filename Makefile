@@ -9,11 +9,17 @@ MANDIR ?= $(PREFIX)/share/man
 DOCDIR ?= $(PREFIX)/share/doc/mkscript
 BUILD_BIN := $(BUILD_DIR)/bin/mkscript
 
-.PHONY: all build clean install lint package package-deb package-deb-source package-rpm release-artifacts release-tag sync-release-metadata test validate-release
+.PHONY: all build build-windows clean install lint package package-deb package-deb-source package-rpm release-artifacts release-tag sync-release-metadata test test-windows validate-release
 
 all: build
 
 build: $(BUILD_BIN)
+
+build-windows:
+	powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/render-windows.ps1
+
+test-windows: build-windows
+	powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File test/test_mkscript_windows.ps1
 
 $(BUILD_BIN): src/mkscript.sh.in VERSION scripts/render.sh
 	mkdir -p $(@D)

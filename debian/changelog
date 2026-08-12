@@ -1,3 +1,9 @@
+mkscript (1.5.0-1) unstable; urgency=medium
+
+  * Add native Windows support and Windows package-manager automation
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Wed, 12 Aug 2026 09:11:10 +0000
+
 mkscript (1.4.4-1) unstable; urgency=medium
 
   * Simplify global linking workflow

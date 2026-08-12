@@ -23,6 +23,8 @@ items=(
   .github
   .gitignore
   CHANGELOG.md
+  INSTALL.md
+  install.ps1
   LICENSE
   Makefile
   README.md

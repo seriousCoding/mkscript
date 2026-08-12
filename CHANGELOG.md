@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.0] - 2026-08-12
+
+### Added
+
+- Add the native Windows PowerShell implementation with `.cmd` generation and managed global wrappers.
+- Add Windows CI, installer/uninstaller commands, release ZIP packaging, and a standalone executable launcher.
+- Add a checksum-verifying direct installer plus WinGet and Chocolatey package generation and publishing automation.
+
+### Changed
+
+- Document Windows installation, command lookup, global wrapper management, and package publishing.
+
 ## [1.4.4] - 2026-08-12
 
 ### Changed
