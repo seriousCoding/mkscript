@@ -1,6 +1,6 @@
 .TH MKSCRIPT 1 "2026-08-12" "mkscript 1.5.0" "User Commands"
 .SH NAME
-mkscript \- create Bash, Terraform, and Ansible starter files safely
+mkscript \- create starter files safely across Linux, macOS, and Windows
 .SH SYNOPSIS
 .B mkscript
 [\fB\-f\fR|\fB\-\-files\fR [\fIdepth\fR]]
@@ -29,17 +29,13 @@ mkscript \- create Bash, Terraform, and Ansible starter files safely
 .I target
 .SH DESCRIPTION
 .B mkscript
-creates a new file at the requested path from a Bash, Terraform, or Ansible starter template.
-The default template is Bash.
+creates a new file at the requested path from a platform-native script template or from a Terraform or Ansible starter template.
+On Linux and macOS, the default template is Bash.
+On native Windows, the PowerShell implementation creates a .cmd file by default.
 .PP
-On native Windows, the PowerShell implementation creates a .cmd file by default
-and uses managed .cmd wrappers in the user bin directory instead of POSIX symlinks.
-Linux and macOS behavior is unchanged.
-For Bash files,
+For Bash files on Linux and macOS,
 .B mkscript
-writes the standard shebang followed by a small comment header
-with the script name, a blank description line, the local creation date, and the
-creator login name:
+writes the standard shebang followed by a small comment header with the script name, a blank description line, the local creation date, and the creator login name:
 .PP
 .EX
 #!/usr/bin/env bash
@@ -49,7 +45,15 @@ creator login name:
 # Creator: login-user
 .EE
 .PP
-For Terraform and Ansible files,
+For Windows command files,
+.B mkscript
+writes
+.B @echo off
+followed by the same metadata header rendered as
+.B rem
+comments.
+.PP
+For Terraform and Ansible files on every platform,
 .B mkscript
 writes the same metadata header with
 .B File
@@ -62,20 +66,20 @@ or
 .B \-\-strict
 is supplied,
 .B mkscript
-also writes:
+adds a platform-native strict-mode line:
 .PP
 .EX
-set -euo pipefail
+Linux/macOS: set -euo pipefail
+Windows:      setlocal EnableExtensions EnableDelayedExpansion
 .EE
 .PP
 When
 .B \-g
 or
 .B \-\-global
-is supplied,
+is supplied on Linux or macOS,
 .B mkscript
-creates a symlink in the detected user bin directory
-using the script basename.
+creates a symlink in the detected user bin directory using the script basename.
 If the requested path does not exist yet,
 .B mkscript
 creates the new Bash script and then creates the symlink.
@@ -83,6 +87,21 @@ If the requested path already exists locally,
 .B mkscript
 asks for confirmation and creates only the symlink without rewriting the local file.
 .PP
+When
+.B \-g
+or
+.B \-\-global
+is supplied on Windows,
+.B mkscript
+creates a managed .cmd wrapper in the user bin directory using the script basename.
+If the requested path does not exist yet,
+.B mkscript
+creates the new .cmd file and then creates the wrapper.
+If the requested path already exists locally,
+.B mkscript
+asks for confirmation and creates only the wrapper without rewriting the local file.
+.PP
+On Linux and macOS,
 .B \-s ,
 .BR \-\-strict ,
 .BR \-g ,
@@ -91,12 +110,19 @@ asks for confirmation and creates only the symlink without rewriting the local f
 and
 .B \-r
 are supported only for the Bash template.
+On Windows, the supported templates are
+.BR cmd ,
+.BR terraform ,
+and
+.BR ansible ;
+Windows does not support
+.BR \-\-template\ bash .
 .PP
 .B \-c
-checks whether the expected global symlink already exists and prints its path when it does.
+checks whether the expected global symlink or wrapper already exists and prints its path when it does.
 .PP
 .B \-r
-removes the expected global symlink after confirmation.
+removes the expected global symlink or wrapper after confirmation.
 .PP
 .B \-f
 or
@@ -104,9 +130,15 @@ or
 scans the current directory tree and prints a table of matching local files.
 .I depth
 may be supplied as a single digit from 0 through 9 to limit how many subfolder levels are scanned.
-A file is listed when it ends with
+On Linux and macOS, a file is listed when it ends with
 .BR .sh ,
 is executable, or is the local target of a managed global symlink.
+On Windows, a file is listed when it ends with
+.BR .cmd ,
+.BR .bat ,
+.BR .ps1 ,
+or
+.BR .sh .
 .PP
 When
 .B \-f
@@ -123,15 +155,18 @@ receives them.
 Lookup mode checks an exact path first, then exact or pattern command matches on
 .BR PATH ,
 then current-tree and wider filename matches.
+On Windows, command lookup uses native Windows command resolution.
 Lookup mode returns the first resolved match for each query.
 .PP
 .B \-mv
-moves an existing local Bash script to a new path, preserves its permission mode,
-and recreates the global shortcut when the source was linked already or when
+moves an existing local Bash script to a new path on Linux/macOS or an existing local command script to a new path on Windows, and recreates the global shortcut when the source was linked already or when
 .B \-g
 is supplied.
+On Linux and macOS,
+.B \-mv
+also preserves the source file permission mode.
 .PP
-Existing files, symlinks, and directories are never overwritten.
+Existing files, symlinks, directories, and managed wrapper paths are never overwritten.
 .PP
 On Linux,
 .B mkscript
@@ -141,6 +176,11 @@ On macOS, it prefers a personal local bin directory already on
 .B PATH
 before falling back to
 .BR ~/.local/bin .
+On Windows, it uses
+.BR %LOCALAPPDATA%\\mkscript\\bin
+unless
+.B MKSCRIPT_BIN_DIR
+is set.
 .SH OPTIONS
 .TP
 .B \-t, \-\-template
@@ -149,18 +189,24 @@ Supported values are
 .BR bash ,
 .BR terraform ,
 and
-.BR ansible .
+.BR ansible
+on Linux and macOS, and
+.BR cmd ,
+.BR terraform ,
+and
+.BR ansible
+on Windows.
 .TP
 .B \-f, \-\-files
-List matching local files under the current directory tree in a table with
-path, kind, executable state, and global-link state.
+List matching local files under the current directory tree.
+On Linux and macOS, listing mode prints path, kind, executable state, and global-link state.
+On Windows, listing mode prints path and kind.
 When supplied, the optional
 .I depth
 value must be a single digit from 0 through 9, where 0 means the current directory only.
 When one to nine
 .I name
-arguments are supplied, or when newline-separated names are piped to standard input,
-lookup mode prints a table with query, found state, result type, resolved location, and parent directory.
+arguments are supplied, or when newline-separated names are piped to standard input, lookup mode prints a table with query, found state, result type, resolved location, and parent directory.
 Quoted shell-style glob patterns such as
 .BR 'install-wifi*'
 are supported in lookup mode.
@@ -168,22 +214,25 @@ are supported in lookup mode.
 .B \-s, \-\-strict
 Add
 .B set -euo pipefail
-after the shebang for the Bash template.
+after the shebang for the Bash template on Linux/macOS, or
+.B setlocal EnableExtensions EnableDelayedExpansion
+for the
+.B cmd
+template on Windows.
 .TP
 .B \-g, \-\-global
-Create a symlink in the detected user bin directory
-that points to the new Bash script, or if the requested local path already exists,
-confirm and link that existing local Bash file instead of rewriting it.
+Create a global shortcut in the detected user bin directory.
+On Linux and macOS this is a symlink for the Bash template.
+On Windows this is a managed .cmd wrapper for the generated command file or for an existing local path after confirmation.
 .TP
 .B \-c
-Check whether the expected global Bash symlink exists and print its path when it does.
+Check whether the expected global symlink or wrapper exists and print its path when it does.
 .TP
 .B \-r
-Remove the expected global Bash symlink after confirmation.
+Remove the expected global symlink or wrapper after confirmation.
 .TP
 .B \-mv
-Move an existing local Bash script to a new path, preserve its permission mode,
-and recreate the global shortcut when appropriate.
+Move an existing local Bash script on Linux/macOS or an existing local command script on Windows, preserve the permission mode on Linux/macOS, and recreate the global shortcut or wrapper when appropriate.
 .TP
 .B \-\-help
 Display usage information and exit successfully.
@@ -199,7 +248,7 @@ Success.
 Command-line usage error.
 .TP
 .B 1
-The requested link was not present for check or removal mode, or one or more lookup names were not found.
+The requested link or wrapper was not present for check or removal mode, or one or more lookup names were not found.
 .TP
 .B 73
 The target script could not be created safely.
@@ -222,12 +271,12 @@ mkscript site.yml --template ansible
 .TP
 Create a strict-mode script:
 .EX
-mkscript --strict deploy.sh
+mkscript --strict deploy
 .EE
 .TP
-Create a strict-mode script with a global shortcut:
+Create a strict-mode script with a global shortcut or wrapper:
 .EX
-mkscript -g deploy.sh -s
+mkscript -g deploy -s
 .EE
 .TP
 List matching files under the current tree:
@@ -247,7 +296,7 @@ mkscript --files 1
 .TP
 Look up one or more names and print the resolved location plus its parent directory:
 .EX
-mkscript -f bash README.md
+mkscript -f mkscript README.md
 .EE
 .TP
 Look up a command or filename with a quoted glob pattern:
@@ -257,25 +306,25 @@ mkscript -f 'install-wifi*'
 .TP
 Look up newline-separated names from standard input:
 .EX
-printf "%s\\n" bash README.md | mkscript -f
+printf "%s\\n" mkscript README.md | mkscript -f
 .EE
 .TP
-Move an existing Bash script and recreate its global shortcut if needed:
+Move an existing script and recreate its global shortcut or wrapper if needed:
 .EX
 mkscript -mv test deploy
 .EE
 .TP
-Link an existing local file into the global bin directory:
+Create a global shortcut or wrapper:
 .EX
-mkscript test.sh -g
+mkscript deploy -g
 .EE
 .TP
-Check a global link:
+Check a global shortcut or wrapper:
 .EX
 mkscript test -c
 .EE
 .TP
-Remove a global link:
+Remove a global shortcut or wrapper:
 .EX
 mkscript -r test
 .EE

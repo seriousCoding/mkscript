@@ -20,6 +20,8 @@ try {
     if (-not (Select-String -Quiet -LiteralPath main.tf -Pattern 'required_version')) { throw 'terraform template failed' }
     & $command -t ansible site.yml
     if (-not (Select-String -Quiet -LiteralPath site.yml -Pattern 'hosts: all')) { throw 'ansible template failed' }
+    $bashError = & $command -t bash nope 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 64 -or $bashError -notmatch 'expected cmd, terraform, or ansible') { throw 'Windows bash template rejection failed' }
     & $command -g tool
     if (-not (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapper creation failed' }
     & $command -c tool

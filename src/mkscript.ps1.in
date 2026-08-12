@@ -24,7 +24,7 @@ Create a new Windows command, Terraform, or Ansible file.
 Global wrapper management applies to command scripts only.
 
 Options:
-  -t, --template TEMPLATE  use cmd, bash, terraform, or ansible
+  -t, --template TEMPLATE  use cmd, terraform, or ansible
   -f, --files              list or look up native Windows files/commands
   -mv                      move a command script and update its wrapper
   -s, --strict             enable delayed expansion in a generated .cmd file
@@ -98,13 +98,13 @@ function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
     $creator = [Environment]::UserName
     $date = Get-Date -Format 'yyyy-MM-dd'
     switch ($Template) {
-        { $_ -in 'cmd','bash' } {
+        'cmd' {
             $lines = @('@echo off', "rem Script: $leaf", 'rem Description:', "rem Created: $date", "rem Creator: $creator")
             if ($Strict) { $lines += 'setlocal EnableExtensions EnableDelayedExpansion' }
         }
         'terraform' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', 'terraform {', '  required_version = ">= 1.0.0"', '}') }
         'ansible' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', '---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
-        default { Stop-Mkscript "unsupported template: $Template (expected cmd, bash, terraform, or ansible)" $UsageError }
+        default { Stop-Mkscript "unsupported template: $Template (expected cmd, terraform, or ansible)" $UsageError }
     }
     $lines | Set-Content -LiteralPath $Target -Encoding UTF8
     Write-Output "Created '$Target'"
@@ -157,7 +157,7 @@ for ($i=0; $i -lt $Arguments.Count; $i++) {
 
 if ($mode -eq 'files') { Find-Files $paths; exit 0 }
 if ($mode -eq 'move') {
-    if ($paths.Count -ne 2 -or $strict -or $template -notin 'cmd','bash') { Stop-Mkscript 'invalid -mv option combination' $UsageError }
+    if ($paths.Count -ne 2 -or $strict -or $template -ne 'cmd') { Stop-Mkscript 'invalid -mv option combination' $UsageError }
     $source=Resolve-FullPath (Get-CommandTarget $paths[0]); $target=Get-CommandTarget $paths[1]
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { Stop-Mkscript "cannot move missing path: $($paths[0])" }
     if (Test-Path -LiteralPath $target) { Stop-Mkscript "refusing to overwrite existing path: $target" }
@@ -170,7 +170,7 @@ if ($mode -eq 'move') {
     Write-Output "Moved '$source' to '$(Resolve-FullPath $target)'"; exit 0
 }
 if ($paths.Count -ne 1) { Stop-Mkscript 'expected exactly one output path' $UsageError }
-$target = if ($template -in 'cmd','bash') { Get-CommandTarget $paths[0] } else { $paths[0] }
+$target = if ($template -eq 'cmd') { Get-CommandTarget $paths[0] } else { $paths[0] }
 $wrapper = Get-WrapperPath $target
 if ($mode -eq 'check') {
     if ($global -or $strict) { Stop-Mkscript 'invalid -c option combination' $UsageError }
@@ -185,9 +185,9 @@ if ($mode -eq 'remove') {
     if (-not (Confirm "Remove wrapper '$wrapper'?")) { Stop-Mkscript 'wrapper removal cancelled' }
     Remove-Item -LiteralPath $wrapper -Force; Write-Output "Removed wrapper '$wrapper'"; exit 0
 }
-if ($template -notin 'cmd','bash','terraform','ansible') { Stop-Mkscript "unsupported template: $template (expected cmd, bash, terraform, or ansible)" $UsageError }
-if ($strict -and $template -notin 'cmd','bash') { Stop-Mkscript '--strict is only supported with the cmd template' $UsageError }
-if ($global -and $template -notin 'cmd','bash') { Stop-Mkscript '--global is only supported with the cmd template' $UsageError }
+if ($template -notin 'cmd','terraform','ansible') { Stop-Mkscript "unsupported template: $template (expected cmd, terraform, or ansible)" $UsageError }
+if ($strict -and $template -ne 'cmd') { Stop-Mkscript '--strict is only supported with the cmd template' $UsageError }
+if ($global -and $template -ne 'cmd') { Stop-Mkscript '--global is only supported with the cmd template' $UsageError }
 if (Test-Path -LiteralPath $target) {
     if (-not $global) { Stop-Mkscript "refusing to overwrite existing path: $target" }
     if ($strict) { Stop-Mkscript 'cannot combine --strict with --global when wrapping an existing path' $UsageError }

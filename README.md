@@ -1,6 +1,6 @@
 # mkscript
 
-`mkscript` creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths. It has native Bash implementations on Linux/macOS and a native PowerShell implementation on Windows.
+`mkscript` creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths. It uses native Bash on Linux/macOS and a native PowerShell implementation on Windows.
 
 Quick links: [`INSTALL.md`](INSTALL.md) | [Public install site](https://seriouscoding.github.io/install/) | [Releases](https://github.com/seriousCoding/mkscript/releases) | [Checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Official packaging guide](docs/official-package-inclusion.md)
 
@@ -60,19 +60,14 @@ For versioned package links, checksum verification, and platform-specific notes,
 
 ## Features
 
-- Creates Bash, Terraform, or Ansible starter files at the path you request.
-- On Windows, uses the native PowerShell implementation and creates a `.cmd` script by default (adding the extension when omitted).
-- Uses Bash by default and writes `#!/usr/bin/env bash` plus a default comment header with script name, blank description, creation date, and creator.
-- Adds `set -euo pipefail` when you pass `-s` or `--strict` with the Bash template.
-- Can create a Terraform starter file with `--template terraform`.
-- Can create an Ansible playbook starter file with `--template ansible`.
-- Optionally creates a global shortcut in your detected user bin directory when you pass `-g` or `--global` with the Bash template.
-- Can list matching files in the current folder tree with `-f` or `--files`, including shell-style files, executable files, and globally linked local files.
-- Can move an existing local Bash script with `-mv`, preserve its permission mode, and recreate the global shortcut when needed.
-- Can link an existing local Bash file into that same user bin directory when you pass `-g` or `--global` for an already existing path.
-- Can check an expected global Bash shortcut with `-c`.
-- Can remove an existing global Bash shortcut with `-r`.
-- Refuses to overwrite existing files, symlinks, or directories.
+- On Linux and macOS, creates Bash starter files by default with `#!/usr/bin/env bash` and the standard metadata header.
+- On Windows, creates `.cmd` starter files by default with `@echo off` and the same metadata header rendered as `rem` comments.
+- `-s` and `--strict` add `set -euo pipefail` for Bash on Linux/macOS and `setlocal EnableExtensions EnableDelayedExpansion` for `.cmd` on Windows.
+- `--template terraform` and `--template ansible` work on every platform.
+- Windows supports `cmd`, `terraform`, and `ansible` templates. It does not support `--template bash`.
+- `-g`, `-c`, `-r`, and `-mv` manage Bash symlinks on Linux/macOS and managed `.cmd` wrappers on Windows.
+- `-f` and `--files` list or look up platform-native commands and files.
+- Refuses to overwrite existing files, symlinks, directories, or managed wrapper paths.
 - Ships with tests, a man page, Debian packaging, RPM packaging, Homebrew support, and GitHub Actions automation.
 - Generates WinGet and Chocolatey metadata and can publish catalog updates from tagged releases when repository credentials are configured.
 
@@ -82,7 +77,7 @@ For versioned package links, checksum verification, and platform-specific notes,
 mkscript hello-world
 ```
 
-This creates `./hello-world` with:
+On Linux and macOS this creates `./hello-world` with:
 
 ```bash
 #!/usr/bin/env bash
@@ -91,6 +86,8 @@ This creates `./hello-world` with:
 # Created: YYYY-MM-DD
 # Creator: login-user
 ```
+
+On Windows the same command creates `.\hello-world.cmd` with `@echo off` followed by the same metadata header in `rem` comments.
 
 Strict mode:
 
@@ -108,6 +105,8 @@ This creates:
 # Creator: login-user
 set -euo pipefail
 ```
+
+On Windows, `mkscript --strict deploy` creates `deploy.cmd` and adds `setlocal EnableExtensions EnableDelayedExpansion` after the metadata header.
 
 Terraform starter:
 
@@ -155,7 +154,7 @@ Global shortcut:
 mkscript test -g
 ```
 
-This creates `./test` and a symlink at `~/.local/bin/test` pointing back to it.
+On Linux and macOS this creates `./test` and a symlink at `~/.local/bin/test` pointing back to it.
 
 On Windows this creates `test.cmd` plus a command wrapper in `%LOCALAPPDATA%\mkscript\bin`. Add that directory to `PATH` once; wrappers do not require symlink privileges.
 
@@ -166,7 +165,7 @@ mkscript -g test -s
 mkscript -s test -g
 ```
 
-Both commands create the same strict-mode script and global shortcut.
+Both commands create the same strict-mode script and global shortcut or wrapper.
 
 Link an existing local script later:
 
@@ -175,25 +174,25 @@ mkscript -g test
 mkscript test.sh -g
 ```
 
-If the local path already exists, `mkscript` asks for confirmation before it creates the shortcut and does not rewrite the file.
+If the local path already exists, `mkscript` asks for confirmation before it creates the shortcut or wrapper and does not rewrite the file.
 
-Check whether a global shortcut already exists:
+Check whether a global shortcut or wrapper already exists:
 
 ```bash
 mkscript -c test
 mkscript test -c
 ```
 
-If the shortcut exists, `mkscript` prints its path and exits successfully.
+If the shortcut or wrapper exists, `mkscript` prints its path and exits successfully.
 
-Remove an existing global shortcut later:
+Remove an existing global shortcut or wrapper later:
 
 ```bash
 mkscript -r test
 mkscript test -r
 ```
 
-`mkscript` asks for confirmation before it removes the shortcut.
+`mkscript` asks for confirmation before it removes the shortcut or wrapper.
 
 List matching files under the current folder tree:
 
@@ -227,7 +226,7 @@ printf '%s\n' bash README.md | mkscript -f
 
 Lookup mode prints a table with `QUERY`, `FOUND`, `TYPE`, `LOCATION`, and `DIRECTORY`.
 
-This prints a table like:
+On Linux and macOS, listing mode prints a table like:
 
 ```text
 PATH                  KIND     EXEC  GLOBAL
@@ -236,15 +235,17 @@ PATH                  KIND     EXEC  GLOBAL
 ./tools/deploy.sh     sh       no    yes
 ```
 
-Move an existing Bash script to a new path:
+On Windows, listing mode prints `PATH` and `KIND` for files such as `.cmd`, `.bat`, `.ps1`, and `.sh`.
+
+Move an existing script to a new path:
 
 ```bash
 mkscript -mv test deploy
 ```
 
-If `test` already had a global shortcut, `mkscript` moves the local file, preserves its permission mode, removes the old shortcut, and creates a new shortcut for `deploy`.
+If `test` already had a managed global shortcut or wrapper, `mkscript` moves the local file, removes the old shortcut or wrapper, and creates a new one for `deploy`. On Linux and macOS it also preserves the source permission mode.
 
-Create a new global shortcut during the move even when the source was not linked before:
+Create a new global shortcut or wrapper during the move even when the source was not linked before:
 
 ```bash
 mkscript -mv test deploy -g
@@ -277,27 +278,28 @@ mkscript site.yml --template ansible
 
 - Linux and macOS create POSIX symlinks and otherwise retain their existing behavior.
 - Windows creates managed `.cmd` wrappers in `%LOCALAPPDATA%\mkscript\bin` (override with `MKSCRIPT_BIN_DIR`). `-c`, `-r`, and `-mv` inspect, remove, and update those wrappers.
-
 - `-g` and `--global` use the script basename for the shortcut name.
-- Global shortcuts are supported only for the Bash template.
-- If the requested path does not exist yet, `-g` creates the new Bash file and its global shortcut.
-- If the requested path already exists locally, `-g` switches to existing-file link mode, prompts for confirmation, and creates only the global shortcut.
+- On Linux and macOS, global shortcuts are supported only for the Bash template.
+- On Windows, wrapper creation for a new file is supported only for the `cmd` template.
+- If the requested path does not exist yet, `-g` creates the new Bash file and its global shortcut on Linux/macOS, or the new `.cmd` file and its wrapper on Windows.
+- If the requested path already exists locally, `-g` switches to existing-file link mode, prompts for confirmation, and creates only the global shortcut or wrapper.
 - Existing-file global mode does not rewrite the local file.
 - Existing-file global mode requires a local path that already exists and is not a directory.
 - Existing-file global mode cannot be combined with `-s`.
-- `-mv ... -g` creates a new global shortcut for the move target even when the source was not linked already.
+- `-mv ... -g` creates a new global shortcut or wrapper for the move target even when the source was not linked already.
 - On Linux, `mkscript` uses `~/.local/bin` for global shortcuts.
 - On macOS, `mkscript` prefers a personal `*local*/bin` or `~/bin` entry already on `PATH`, then falls back to `~/.local/bin`.
-- Existing files or symlinks at that global path are never overwritten.
+- On Windows, `mkscript` uses `%LOCALAPPDATA%\mkscript\bin` unless `MKSCRIPT_BIN_DIR` is set.
+- Existing files, symlinks, or wrappers at that global path are never overwritten.
 - The chosen global bin directory needs to be on your `PATH` if you want to run the shortcut directly.
 
 ## Link management notes
 
-- `-c` checks for the expected global shortcut and prints the resolved shortcut path when it exists.
-- `-r` prompts with `Are you sure you want to remove link for '<script-name>' from '<bin-location>'?`.
-- `-r` only removes symlinks; it refuses to delete regular files or directories at the global path.
-- `-c` and `-r` only support the Bash template.
-- `-c` and `-r` cannot be combined with `-g` or `-s`.
+- `-c` checks for the expected global shortcut or wrapper and prints the resolved path when it exists.
+- `-r` prompts before removing the managed symlink or wrapper.
+- `-r` only removes managed symlinks on Linux/macOS and managed wrappers on Windows. It refuses to delete unrelated paths at the global location.
+- `-c` resolves the Bash symlink name on Linux/macOS and the `.cmd` wrapper name on Windows.
+- On Windows, `-c` cannot be combined with `-g` or `-s`.
 
 ## Files mode notes
 
@@ -308,11 +310,10 @@ mkscript site.yml --template ansible
 - `printf '%s\n' name1 name2 | mkscript -f` also uses lookup mode from newline-separated stdin.
 - Quoted shell-style glob patterns like `mkscript -f 'install-wifi*'` are supported in lookup mode.
 - Quote glob patterns so your shell passes them to `mkscript` unchanged.
-- A file is listed if it ends with `.sh`, is executable, or is the local target of a managed global symlink.
-- `PATH` shows the relative file path.
-- `KIND` is `sh`, `exec`, `sh+exec`, or `file`.
-- `EXEC` shows whether the local file is executable.
-- `GLOBAL` shows whether a managed global symlink points to that local file.
+- On Linux and macOS, a file is listed if it ends with `.sh`, is executable, or is the local target of a managed global symlink.
+- On Windows, a file is listed if it ends with `.cmd`, `.bat`, `.ps1`, or `.sh`.
+- On Linux and macOS, `PATH` shows the relative file path, `KIND` is `sh`, `exec`, `sh+exec`, or `file`, `EXEC` shows whether the file is executable, and `GLOBAL` shows whether a managed global symlink points to that local file.
+- On Windows, listing mode prints `PATH` and `KIND`, where `KIND` is the extension without the leading dot.
 - Unreadable folders are skipped quietly so protected macOS paths do not clutter the output.
 - Lookup mode prints `QUERY`, `FOUND`, `TYPE`, `LOCATION`, and `DIRECTORY`.
 - Lookup mode checks an exact path first, then exact or pattern command matches on `PATH`, then current-tree and wider filename matches.
@@ -330,19 +331,21 @@ mkscript -f 'install-wifi*'
 
 ## Move mode notes
 
-- `-mv` only supports the Bash template.
+- `-mv` supports the Bash template on Linux/macOS and the `cmd` template on Windows.
 - `-mv` moves the existing local file instead of rewriting its contents.
-- `-mv` preserves the source file's permission mode on the moved target.
-- If the source had a managed global shortcut, `-mv` removes the old shortcut and recreates it for the target basename.
-- `-mv` can be combined with `-g` to create a new global shortcut for an unlinked source.
+- On Linux and macOS, `-mv` preserves the source file's permission mode on the moved target.
+- If the source had a managed global shortcut or wrapper, `-mv` removes the old one and recreates it for the target basename.
+- `-mv` can be combined with `-g` to create a new global shortcut or wrapper for an unlinked source.
 - `-mv` cannot be combined with `-s`, `-c`, or `-r`.
 
 ## Template notes
 
-- `--template bash` is the default behavior.
+- On Linux and macOS, `--template bash` is the default behavior.
+- On Windows, `--template cmd` is the default behavior.
 - `--template terraform` creates a non-executable `.tf` starter file.
 - `--template ansible` creates a non-executable YAML playbook starter file.
-- `-s`, `-g`, `-mv`, `-c`, and `-r` are Bash-only options.
+- On Linux and macOS, `-s`, `-g`, `-mv`, `-c`, and `-r` are Bash-only options.
+- On Windows, `-s` applies to the `cmd` template, `-g`, `-mv`, `-c`, and `-r` apply to the wrapper workflow, and `--template bash` is not supported.
 
 ## Build and test
 
