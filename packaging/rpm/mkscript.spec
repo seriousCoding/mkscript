@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.4.3
+Version:        1.4.4
 Release:        1%{?dist}
 Summary:        Create Bash, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,9 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.4-1
+- Simplify global linking workflow
+
 * Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.3-1
 - Add glob patterns to mkscript file lookup
 
