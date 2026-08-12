@@ -1,3 +1,9 @@
+mkscript (1.4.3-1) unstable; urgency=medium
+
+  * Add glob patterns to mkscript file lookup
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Wed, 12 Aug 2026 03:25:58 +0000
+
 mkscript (1.4.2-1) unstable; urgency=medium
 
   * Automate patch releases from successful main CI

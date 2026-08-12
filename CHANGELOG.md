@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.3] - 2026-08-12
+
+### Changed
+
+- Add glob patterns to mkscript file lookup
+
 ## [1.4.2] - 2026-08-11
 
 ### Changed
