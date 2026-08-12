@@ -585,7 +585,7 @@ test_help_output() {
   assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
   assert_contains "$RUN_STDOUT" '-g, --global' 'help should document global mode'
-  assert_contains "$RUN_STDOUT" '-l, --link' 'help should document link-only mode'
+  assert_contains "$RUN_STDOUT" 'create a global symlink for a new Bash script or an existing Bash file' 'help should explain dual-purpose global mode'
   assert_contains "$RUN_STDOUT" '-c' 'help should document link-check mode'
   assert_contains "$RUN_STDOUT" '-r' 'help should document link-removal mode'
 }
@@ -619,6 +619,12 @@ test_invalid_option() {
   run_capture "$MKSCRIPT_UNDER_TEST" --bogus
   assert_status 64 "$RUN_STATUS" 'unknown options should be a usage error'
   assert_contains "$RUN_STDERR" 'unknown option: --bogus' 'unknown options should be explained'
+}
+
+test_removed_link_option_is_rejected() {
+  run_capture "$MKSCRIPT_UNDER_TEST" -l test
+  assert_status 64 "$RUN_STATUS" 'the removed link option should now be a usage error'
+  assert_contains "$RUN_STDERR" 'unknown option: -l' 'the removed link option should be reported as unknown'
 }
 
 test_missing_parent_directory() {
@@ -1071,18 +1077,6 @@ test_files_mode_rejects_strict_flag_combination() {
   rm -rf "$sandbox"
 }
 
-test_files_mode_rejects_link_flag_combination() {
-  local sandbox
-
-  sandbox=$(mktemp -d)
-  cd "$sandbox"
-  run_capture "$MKSCRIPT_UNDER_TEST" --files -l
-  assert_status 64 "$RUN_STATUS" 'files mode should reject the link flag combination'
-  assert_contains "$RUN_STDERR" 'cannot combine --files with --link' 'the rejected files/link combination should be explained'
-  cd "$START_DIR"
-  rm -rf "$sandbox"
-}
-
 test_files_mode_rejects_check_flag_combination() {
   local sandbox
 
@@ -1329,18 +1323,6 @@ test_move_mode_rejects_strict_flag_combination() {
   rm -rf "$sandbox"
 }
 
-test_move_mode_rejects_link_flag_combination() {
-  local sandbox
-
-  sandbox=$(mktemp -d)
-  cd "$sandbox"
-  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy -l
-  assert_status 64 "$RUN_STATUS" 'move mode should reject the link-only flag combination'
-  assert_contains "$RUN_STDERR" 'cannot combine -mv with --link' 'the rejected move/link combination should be explained'
-  cd "$START_DIR"
-  rm -rf "$sandbox"
-}
-
 test_move_mode_rejects_check_flag_combination() {
   local sandbox
 
@@ -1389,7 +1371,7 @@ test_move_mode_rejects_ansible_template() {
   rm -rf "$sandbox"
 }
 
-test_link_mode_links_existing_file() {
+test_global_mode_links_existing_file() {
   local sandbox
   local home_dir
   local expected_target
@@ -1405,15 +1387,15 @@ test_link_mode_links_existing_file() {
   printf '#!/usr/bin/env bash\n' > "$sandbox/test"
   chmod 755 "$sandbox/test"
   cd "$sandbox"
-  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -l test
-  assert_status 0 "$RUN_STATUS" 'link-only mode should link an existing file after confirmation'
-  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test' to '$expected_link'?" 'link-only mode should prompt for confirmation'
-  assert_symlink_target "$expected_link" "$expected_target" 'link-only mode should create the expected symlink'
+  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -g test
+  assert_status 0 "$RUN_STATUS" 'global mode should link an existing file after confirmation'
+  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test' to '$expected_link'?" 'global mode should prompt before linking an existing file'
+  assert_symlink_target "$expected_link" "$expected_target" 'global mode should create the expected symlink for an existing file'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
 
-test_link_mode_links_existing_sh_file_with_trailing_flag() {
+test_global_mode_links_existing_file_with_trailing_flag() {
   local sandbox
   local home_dir
   local expected_target
@@ -1429,35 +1411,15 @@ test_link_mode_links_existing_sh_file_with_trailing_flag() {
   printf '#!/usr/bin/env bash\n' > "$sandbox/test.sh"
   chmod 755 "$sandbox/test.sh"
   cd "$sandbox"
-  run_capture_with_input $'yes\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test.sh -l
-  assert_status 0 "$RUN_STATUS" 'link-only mode should allow the link flag after the path'
-  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test.sh' to '$expected_link'?" 'trailing link flag should still prompt for confirmation'
-  assert_symlink_target "$expected_link" "$expected_target" 'trailing link flag should create the expected symlink'
+  run_capture_with_input $'yes\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test.sh -g
+  assert_status 0 "$RUN_STATUS" 'global mode should allow the global flag after an existing path'
+  assert_contains "$RUN_STDOUT" "Are you sure you want to link source path 'test.sh' to '$expected_link'?" 'trailing global flag should still prompt for confirmation when the path exists'
+  assert_symlink_target "$expected_link" "$expected_target" 'trailing global flag should create the expected symlink for an existing file'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
 
-test_link_mode_refuses_missing_local_target() {
-  local sandbox
-  local home_dir
-  local path_value
-  local expected_link
-
-  sandbox=$(mktemp -d)
-  home_dir="$sandbox/home"
-  path_value=$(default_global_test_path "$home_dir")
-  expected_link=$(expected_global_link_path "$home_dir" "$path_value" missing-script)
-  mkdir -p "$home_dir"
-  cd "$sandbox"
-  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -l missing-script
-  assert_status 73 "$RUN_STATUS" 'link-only mode should refuse missing local files'
-  assert_contains "$RUN_STDERR" 'cannot link missing path' 'missing local targets should be explained'
-  assert_not_exists "$expected_link" 'missing local targets should not create a global link'
-  cd "$START_DIR"
-  rm -rf "$sandbox"
-}
-
-test_link_mode_refuses_existing_global_path() {
+test_global_mode_refuses_existing_global_path_for_existing_file() {
   local sandbox
   local home_dir
   local path_value
@@ -1474,15 +1436,15 @@ test_link_mode_refuses_existing_global_path() {
   chmod 755 "$sandbox/test"
   printf 'busy\n' > "$expected_link"
   cd "$sandbox"
-  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -l test
-  assert_status 73 "$RUN_STATUS" 'link-only mode should refuse to overwrite an existing global path'
-  assert_contains "$RUN_STDERR" 'refusing to overwrite existing global path' 'existing global paths should be explained for link-only mode'
-  assert_file_equals "$expected_link" $'busy\n' 'existing global paths should remain unchanged in link-only mode'
+  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -g test
+  assert_status 73 "$RUN_STATUS" 'global mode should refuse to overwrite an existing global path when linking an existing file'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing global path' 'existing global paths should be explained for existing-file global mode'
+  assert_file_equals "$expected_link" $'busy\n' 'existing global paths should remain unchanged in existing-file global mode'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
 
-test_link_mode_cancellation_refuses_to_link() {
+test_global_mode_existing_file_cancellation_refuses_to_link() {
   local sandbox
   local home_dir
   local path_value
@@ -1496,15 +1458,15 @@ test_link_mode_cancellation_refuses_to_link() {
   printf '#!/usr/bin/env bash\n' > "$sandbox/test"
   chmod 755 "$sandbox/test"
   cd "$sandbox"
-  run_capture_with_input $'n\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -l test
-  assert_status 73 "$RUN_STATUS" 'link-only mode should stop when confirmation is denied'
+  run_capture_with_input $'n\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -g test
+  assert_status 73 "$RUN_STATUS" 'global mode should stop when existing-file link confirmation is denied'
   assert_contains "$RUN_STDERR" 'link cancelled' 'denied confirmation should be explained'
   assert_not_exists "$expected_link" 'denied confirmation should not create a global link'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
 
-test_link_mode_rejects_global_flag_combination() {
+test_global_mode_rejects_strict_for_existing_file() {
   local sandbox
   local home_dir
   local path_value
@@ -1518,32 +1480,10 @@ test_link_mode_rejects_global_flag_combination() {
   printf '#!/usr/bin/env bash\n' > "$sandbox/test"
   chmod 755 "$sandbox/test"
   cd "$sandbox"
-  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -l test -g
-  assert_status 64 "$RUN_STATUS" 'link-only mode should reject the global flag combination'
-  assert_contains "$RUN_STDERR" 'cannot combine --link with --global' 'the rejected global flag combination should be explained'
-  assert_not_exists "$expected_link" 'invalid link/global combinations should not create a global link'
-  cd "$START_DIR"
-  rm -rf "$sandbox"
-}
-
-test_link_mode_rejects_strict_flag_combination() {
-  local sandbox
-  local home_dir
-  local path_value
-  local expected_link
-
-  sandbox=$(mktemp -d)
-  home_dir="$sandbox/home"
-  path_value=$(default_global_test_path "$home_dir")
-  expected_link=$(expected_global_link_path "$home_dir" "$path_value" test)
-  mkdir -p "$home_dir"
-  printf '#!/usr/bin/env bash\n' > "$sandbox/test"
-  chmod 755 "$sandbox/test"
-  cd "$sandbox"
-  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -l -s
-  assert_status 64 "$RUN_STATUS" 'link-only mode should reject the strict flag combination'
-  assert_contains "$RUN_STDERR" 'cannot combine --link with --strict' 'the rejected strict flag combination should be explained'
-  assert_not_exists "$expected_link" 'invalid link/strict combinations should not create a global link'
+  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" test -g -s
+  assert_status 64 "$RUN_STATUS" 'global mode should reject strict mode when linking an existing file'
+  assert_contains "$RUN_STDERR" 'cannot combine --strict with --global when linking an existing path' 'existing-file global mode should explain the strict-mode rejection'
+  assert_not_exists "$expected_link" 'invalid strict/existing-file global combinations should not create a global link'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -1771,6 +1711,7 @@ run_test test_version_output
 run_test test_overwrite_refusal
 run_test test_missing_output_path
 run_test test_invalid_option
+run_test test_removed_link_option_is_rejected
 run_test test_missing_parent_directory
 run_test test_directory_target_refusal
 run_test test_global_mode_with_trailing_strict_flag
@@ -1794,7 +1735,6 @@ run_test test_files_mode_rejects_too_many_lookup_names
 run_test test_files_mode_rejects_depth_with_stdin_lookup
 run_test test_files_mode_rejects_global_flag_combination
 run_test test_files_mode_rejects_strict_flag_combination
-run_test test_files_mode_rejects_link_flag_combination
 run_test test_files_mode_rejects_check_flag_combination
 run_test test_files_mode_rejects_remove_flag_combination
 run_test test_files_mode_rejects_move_flag_combination
@@ -1808,18 +1748,15 @@ run_test test_move_mode_rejects_directory_source
 run_test test_move_mode_rejects_existing_target
 run_test test_move_mode_rejects_existing_target_global_path
 run_test test_move_mode_rejects_strict_flag_combination
-run_test test_move_mode_rejects_link_flag_combination
 run_test test_move_mode_rejects_check_flag_combination
 run_test test_move_mode_rejects_remove_flag_combination
 run_test test_move_mode_rejects_terraform_template
 run_test test_move_mode_rejects_ansible_template
-run_test test_link_mode_links_existing_file
-run_test test_link_mode_links_existing_sh_file_with_trailing_flag
-run_test test_link_mode_refuses_missing_local_target
-run_test test_link_mode_refuses_existing_global_path
-run_test test_link_mode_cancellation_refuses_to_link
-run_test test_link_mode_rejects_global_flag_combination
-run_test test_link_mode_rejects_strict_flag_combination
+run_test test_global_mode_links_existing_file
+run_test test_global_mode_links_existing_file_with_trailing_flag
+run_test test_global_mode_refuses_existing_global_path_for_existing_file
+run_test test_global_mode_existing_file_cancellation_refuses_to_link
+run_test test_global_mode_rejects_strict_for_existing_file
 run_test test_check_mode_reports_existing_link
 run_test test_check_mode_reports_missing_link_with_trailing_flag
 run_test test_check_mode_refuses_non_symlink_global_path

@@ -16,7 +16,6 @@ mkscript \- create Bash, Terraform, and Ansible starter files safely
 [\fB\-t\fR|\fB\-\-template\fR \fItemplate\fR]
 [\fB\-s\fR|\fB\-\-strict\fR]
 [\fB\-g\fR|\fB\-\-global\fR]
-[\fB\-l\fR|\fB\-\-link\fR]
 [\fB\-c\fR]
 [\fB\-r\fR]
 [\fB\-\-help\fR]
@@ -71,25 +70,23 @@ or
 .B \-\-global
 is supplied,
 .B mkscript
-also creates a symlink in the detected user bin directory
+creates a symlink in the detected user bin directory
 using the script basename.
+If the requested path does not exist yet,
+.B mkscript
+creates the new Bash script and then creates the symlink.
+If the requested path already exists locally,
+.B mkscript
+asks for confirmation and creates only the symlink without rewriting the local file.
 .PP
 .B \-s ,
 .BR \-\-strict ,
 .BR \-g ,
 .BR \-\-global ,
-.BR \-l ,
-.BR \-\-link ,
 .BR \-c ,
 and
 .B \-r
 are supported only for the Bash template.
-.PP
-.B \-l
-or
-.B \-\-link
-links an existing local file into that same user bin directory
-after confirmation.
 .PP
 .B \-c
 checks whether the expected global symlink already exists and prints its path when it does.
@@ -171,11 +168,8 @@ after the shebang for the Bash template.
 .TP
 .B \-g, \-\-global
 Create a symlink in the detected user bin directory
-that points to the new Bash script.
-.TP
-.B \-l, \-\-link
-Create only a symlink in the detected user bin directory
-for an existing local Bash file.
+that points to the new Bash script, or if the requested local path already exists,
+confirm and link that existing local Bash file instead of rewriting it.
 .TP
 .B \-c
 Check whether the expected global Bash symlink exists and print its path when it does.
@@ -269,7 +263,7 @@ mkscript -mv test deploy
 .TP
 Link an existing local file into the global bin directory:
 .EX
-mkscript test.sh -l
+mkscript test.sh -g
 .EE
 .TP
 Check a global link:

@@ -28,8 +28,7 @@ Options:
                   and print both the resolved path and its parent directory
   -mv             move an existing Bash script to a new path
   -s, --strict    add "set -euo pipefail" after the shebang
-  -g, --global    create a global symlink for the new Bash script
-  -l, --link      create only a global symlink for an existing Bash file
+  -g, --global    create a global symlink for a new Bash script or an existing Bash file
   -c              check whether the expected global Bash symlink exists
   -r              remove the expected global Bash symlink after confirmation
       --help      display this help and exit
@@ -1014,6 +1013,24 @@ confirm_link_action() {
   esac
 }
 
+link_existing_target() {
+  local target=$1
+  local link_path
+  local absolute_target
+
+  validate_link_source "$target"
+  link_path=$(global_link_path "$target")
+  validate_global_link "$link_path"
+  absolute_target=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
+  confirm_link_action "$target" "$link_path"
+
+  if ! create_global_link "$absolute_target" "$link_path"; then
+    fail_create "failed to create global link: $link_path"
+  fi
+
+  printf 'Created global link: %s -> %s\n' "$link_path" "$absolute_target"
+}
+
 confirm_remove_action() {
   local target_name=$1
   local link_path=$2
@@ -1141,7 +1158,6 @@ move_script() {
 main() {
   local strict_enabled=0
   local global_enabled=0
-  local link_only=0
   local check_only=0
   local remove_only=0
   local files_only=0
@@ -1203,11 +1219,6 @@ main() {
           ;;
         -g|--global)
           global_enabled=1
-          shift
-          continue
-          ;;
-        -l|--link)
-          link_only=1
           shift
           continue
           ;;
@@ -1310,22 +1321,6 @@ main() {
     target=$first_path
   fi
 
-  if [ "$link_only" -eq 1 ] && [ "$global_enabled" -eq 1 ]; then
-    fail_usage "cannot combine --link with --global"
-  fi
-
-  if [ "$link_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
-    fail_usage "cannot combine --link with --strict"
-  fi
-
-  if [ "$link_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
-    fail_usage "cannot combine --link with -c"
-  fi
-
-  if [ "$link_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
-    fail_usage "cannot combine --link with -r"
-  fi
-
   if [ "$check_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
     fail_usage "cannot combine -c with -r"
   fi
@@ -1350,10 +1345,6 @@ main() {
     fail_usage "cannot combine -mv with --strict"
   fi
 
-  if [ "$move_only" -eq 1 ] && [ "$link_only" -eq 1 ]; then
-    fail_usage "cannot combine -mv with --link"
-  fi
-
   if [ "$move_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
     fail_usage "cannot combine -mv with -c"
   fi
@@ -1368,10 +1359,6 @@ main() {
 
   if [ "$files_only" -eq 1 ] && [ "$strict_enabled" -eq 1 ]; then
     fail_usage "cannot combine --files with --strict"
-  fi
-
-  if [ "$files_only" -eq 1 ] && [ "$link_only" -eq 1 ]; then
-    fail_usage "cannot combine --files with --link"
   fi
 
   if [ "$files_only" -eq 1 ] && [ "$check_only" -eq 1 ]; then
@@ -1396,10 +1383,6 @@ main() {
 
   if [ "$template" != 'bash' ] && [ "$global_enabled" -eq 1 ]; then
     fail_usage "--global is only supported with the bash template"
-  fi
-
-  if [ "$template" != 'bash' ] && [ "$link_only" -eq 1 ]; then
-    fail_usage "--link is only supported with the bash template"
   fi
 
   if [ "$template" != 'bash' ] && [ "$check_only" -eq 1 ]; then
@@ -1441,18 +1424,12 @@ main() {
     exit 0
   fi
 
-  if [ "$link_only" -eq 1 ]; then
-    validate_link_source "$target"
-    link_path=$(global_link_path "$target")
-    validate_global_link "$link_path"
-    absolute_target=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
-    confirm_link_action "$target" "$link_path"
-
-    if ! create_global_link "$absolute_target" "$link_path"; then
-      fail_create "failed to create global link: $link_path"
+  if [ "$global_enabled" -eq 1 ] && { [ -e "$target" ] || [ -L "$target" ]; }; then
+    if [ "$strict_enabled" -eq 1 ]; then
+      fail_usage "cannot combine --strict with --global when linking an existing path"
     fi
 
-    printf 'Created global link: %s -> %s\n' "$link_path" "$absolute_target"
+    link_existing_target "$target"
     exit 0
   fi
 

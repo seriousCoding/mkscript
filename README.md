@@ -52,7 +52,7 @@ For versioned package links, checksum verification, and platform-specific notes,
 - Optionally creates a global shortcut in your detected user bin directory when you pass `-g` or `--global` with the Bash template.
 - Can list matching files in the current folder tree with `-f` or `--files`, including shell-style files, executable files, and globally linked local files.
 - Can move an existing local Bash script with `-mv`, preserve its permission mode, and recreate the global shortcut when needed.
-- Can link an existing local Bash file into that same user bin directory when you pass `-l` or `--link`.
+- Can link an existing local Bash file into that same user bin directory when you pass `-g` or `--global` for an already existing path.
 - Can check an expected global Bash shortcut with `-c`.
 - Can remove an existing global Bash shortcut with `-r`.
 - Refuses to overwrite existing files, symlinks, or directories.
@@ -151,11 +151,11 @@ Both commands create the same strict-mode script and global shortcut.
 Link an existing local script later:
 
 ```bash
-mkscript -l test
-mkscript test.sh -l
+mkscript -g test
+mkscript test.sh -g
 ```
 
-`mkscript` asks for confirmation before it creates the shortcut.
+If the local path already exists, `mkscript` asks for confirmation before it creates the shortcut and does not rewrite the file.
 
 Check whether a global shortcut already exists:
 
@@ -257,19 +257,16 @@ mkscript site.yml --template ansible
 
 - `-g` and `--global` use the script basename for the shortcut name.
 - Global shortcuts are supported only for the Bash template.
+- If the requested path does not exist yet, `-g` creates the new Bash file and its global shortcut.
+- If the requested path already exists locally, `-g` switches to existing-file link mode, prompts for confirmation, and creates only the global shortcut.
+- Existing-file global mode does not rewrite the local file.
+- Existing-file global mode requires a local path that already exists and is not a directory.
+- Existing-file global mode cannot be combined with `-s`.
 - `-mv ... -g` creates a new global shortcut for the move target even when the source was not linked already.
 - On Linux, `mkscript` uses `~/.local/bin` for global shortcuts.
 - On macOS, `mkscript` prefers a personal `*local*/bin` or `~/bin` entry already on `PATH`, then falls back to `~/.local/bin`.
 - Existing files or symlinks at that global path are never overwritten.
 - The chosen global bin directory needs to be on your `PATH` if you want to run the shortcut directly.
-
-## Link-only mode notes
-
-- `-l` and `--link` only create the global shortcut; they do not create or edit the local file.
-- The local target must already exist and must not be a directory.
-- `mkscript` prompts with `Are you sure you want to link source path '<source-path>' to '<bin-location>'?`.
-- `-l` only supports the Bash template.
-- `-l` cannot be combined with `-g` or `-s`.
 
 ## Link management notes
 
@@ -277,7 +274,7 @@ mkscript site.yml --template ansible
 - `-r` prompts with `Are you sure you want to remove link for '<script-name>' from '<bin-location>'?`.
 - `-r` only removes symlinks; it refuses to delete regular files or directories at the global path.
 - `-c` and `-r` only support the Bash template.
-- `-c` and `-r` cannot be combined with `-g`, `-l`, or `-s`.
+- `-c` and `-r` cannot be combined with `-g` or `-s`.
 
 ## Files mode notes
 
@@ -300,7 +297,7 @@ mkscript site.yml --template ansible
 - Lookup mode returns `0` only when every requested name is found, and `1` when any requested name is missing.
 - Lookup mode accepts at most nine names total across arguments and piped stdin.
 - A single numeric argument from `0` to `9` keeps its depth meaning; if you need lookup input from stdin, do not combine it with a depth argument.
-- `-f` is read-only and cannot be combined with `--template`, `-g`, `-mv`, `-s`, `-l`, `-c`, or `-r`.
+- `-f` is read-only and cannot be combined with `--template`, `-g`, `-mv`, `-s`, `-c`, or `-r`.
 
 Quoted glob lookup example:
 
@@ -315,14 +312,14 @@ mkscript -f 'install-wifi*'
 - `-mv` preserves the source file's permission mode on the moved target.
 - If the source had a managed global shortcut, `-mv` removes the old shortcut and recreates it for the target basename.
 - `-mv` can be combined with `-g` to create a new global shortcut for an unlinked source.
-- `-mv` cannot be combined with `-s`, `-l`, `-c`, or `-r`.
+- `-mv` cannot be combined with `-s`, `-c`, or `-r`.
 
 ## Template notes
 
 - `--template bash` is the default behavior.
 - `--template terraform` creates a non-executable `.tf` starter file.
 - `--template ansible` creates a non-executable YAML playbook starter file.
-- `-s`, `-g`, `-mv`, `-l`, `-c`, and `-r` are Bash-only options.
+- `-s`, `-g`, `-mv`, `-c`, and `-r` are Bash-only options.
 
 ## Build and test
 
