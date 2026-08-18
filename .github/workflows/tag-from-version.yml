@@ -99,9 +99,23 @@ jobs:
           git config user.name "${GIT_AUTHOR_NAME:-github-actions[bot]}"
           git config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
 
-      - name: Create automated release commit
+      - name: Select version and create automated release commit when needed
         if: steps.release_mode.outputs.mode == 'create'
         run: |
+          set -euo pipefail
+
+          tested_sha='${{ github.event.workflow_run.head_sha }}'
+          current_version=$(tr -d '\r\n' < VERSION)
+          current_tag="v$current_version"
+          current_tag_sha=$(git rev-list -n 1 "$current_tag" 2>/dev/null || true)
+
+          if [ -z "$current_tag_sha" ] || [ "$current_tag_sha" = "$tested_sha" ]; then
+            printf 'Publishing the version already declared in VERSION: %s\n' "$current_tag"
+            ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          printf '%s is already published from another commit; creating the next patch release.\n' "$current_tag"
           ./scripts/bump-version.sh --notes-file release-notes.txt
           ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
           git add VERSION CHANGELOG.md debian/changelog packaging/rpm/mkscript.spec mkscript.1
