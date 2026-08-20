@@ -318,6 +318,377 @@ expected_ansible_content() {
   printf '  tasks: []\n'
 }
 
+template_stem_name_for_test() {
+  local target_name=$1
+
+  case $target_name in
+    *.*)
+      printf '%s\n' "${target_name%.*}"
+      ;;
+    *)
+      printf '%s\n' "$target_name"
+      ;;
+  esac
+}
+
+normalize_manifest_name_for_test() {
+  local target_name=$1
+  local normalized
+
+  normalized=$(
+    printf '%s' "$(template_stem_name_for_test "$target_name")" |
+      tr '[:upper:]' '[:lower:]' |
+      sed \
+        -e 's/[[:space:]_][[:space:]_]*/-/g' \
+        -e 's/[^a-z0-9.-]/-/g' \
+        -e 's/-\{2,\}/-/g' \
+        -e 's/\.\{2,\}/./g' \
+        -e 's/^[^a-z0-9]*//' \
+        -e 's/[^a-z0-9]*$//'
+  )
+
+  if [ -z "$normalized" ]; then
+    fail "failed to derive normalized manifest name in test for $target_name"
+  fi
+
+  printf '%s\n' "$normalized"
+}
+
+manifest_storage_class_name_for_test() {
+  printf '%s-storage\n' "$(normalize_manifest_name_for_test "$1")"
+}
+
+expected_dockerfile_content() {
+  local target_name=$1
+
+  printf '# File: %s\n' "$target_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  printf '\n'
+  printf 'FROM alpine:3.22\n'
+  printf 'WORKDIR /app\n'
+  printf 'COPY . .\n'
+  printf 'CMD ["sh"]\n'
+}
+
+expected_docker_compose_content() {
+  local target_name=$1
+  local service_name
+
+  service_name=$(normalize_manifest_name_for_test "$target_name")
+
+  printf '# File: %s\n' "$target_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  printf '\n'
+  printf 'services:\n'
+  printf '  %s:\n' "$service_name"
+  printf '    image: nginx:1.29-alpine\n'
+  printf '    ports:\n'
+  printf '      - "8080:80"\n'
+}
+
+expected_k8s_template_content() {
+  local template=$1
+  local target_name=$2
+  local resource_name
+  local storage_class_name
+  local role_name
+  local binding_name
+  local cluster_role_name
+  local cluster_binding_name
+
+  resource_name=$(normalize_manifest_name_for_test "$target_name")
+  storage_class_name=$(manifest_storage_class_name_for_test "$target_name")
+  role_name="${resource_name}-role"
+  binding_name="${resource_name}-binding"
+  cluster_role_name="${resource_name}-clusterrole"
+  cluster_binding_name="${resource_name}-clusterrolebinding"
+
+  printf '# File: %s\n' "$target_name"
+  printf '# Description:\n'
+  printf '# Created: %s\n' "$(current_created_date)"
+  printf '# Creator: %s\n' "$(current_creator_name)"
+  printf '\n'
+
+  case $template in
+    k8s-namespace)
+      printf 'apiVersion: v1\n'
+      printf 'kind: Namespace\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      ;;
+    k8s-pod)
+      printf 'apiVersion: v1\n'
+      printf 'kind: Pod\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf '  labels:\n'
+      printf '    app: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  containers:\n'
+      printf '    - name: %s\n' "$resource_name"
+      printf '      image: registry.k8s.io/pause:3.10\n'
+      ;;
+    k8s-deployment)
+      printf 'apiVersion: apps/v1\n'
+      printf 'kind: Deployment\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  replicas: 1\n'
+      printf '  selector:\n'
+      printf '    matchLabels:\n'
+      printf '      app: %s\n' "$resource_name"
+      printf '  template:\n'
+      printf '    metadata:\n'
+      printf '      labels:\n'
+      printf '        app: %s\n' "$resource_name"
+      printf '    spec:\n'
+      printf '      containers:\n'
+      printf '        - name: %s\n' "$resource_name"
+      printf '          image: registry.k8s.io/pause:3.10\n'
+      ;;
+    k8s-service)
+      printf 'apiVersion: v1\n'
+      printf 'kind: Service\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  selector:\n'
+      printf '    app: %s\n' "$resource_name"
+      printf '  ports:\n'
+      printf '    - port: 80\n'
+      printf '      targetPort: 80\n'
+      ;;
+    k8s-configmap)
+      printf 'apiVersion: v1\n'
+      printf 'kind: ConfigMap\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'data: {}\n'
+      ;;
+    k8s-secret)
+      printf 'apiVersion: v1\n'
+      printf 'kind: Secret\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'type: Opaque\n'
+      printf 'stringData: {}\n'
+      ;;
+    k8s-ingress)
+      printf 'apiVersion: networking.k8s.io/v1\n'
+      printf 'kind: Ingress\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  rules:\n'
+      printf '    - host: %s.example.com\n' "$resource_name"
+      printf '      http:\n'
+      printf '        paths:\n'
+      printf '          - path: /\n'
+      printf '            pathType: Prefix\n'
+      printf '            backend:\n'
+      printf '              service:\n'
+      printf '                name: %s\n' "$resource_name"
+      printf '                port:\n'
+      printf '                  number: 80\n'
+      ;;
+    k8s-networkpolicy)
+      printf 'apiVersion: networking.k8s.io/v1\n'
+      printf 'kind: NetworkPolicy\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  podSelector:\n'
+      printf '    matchLabels:\n'
+      printf '      app: %s\n' "$resource_name"
+      printf '  policyTypes:\n'
+      printf '    - Ingress\n'
+      printf '  ingress: []\n'
+      ;;
+    k8s-serviceaccount)
+      printf 'apiVersion: v1\n'
+      printf 'kind: ServiceAccount\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      ;;
+    k8s-role)
+      printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+      printf 'kind: Role\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$role_name"
+      printf '  namespace: %s\n' "$resource_name"
+      printf 'rules: []\n'
+      ;;
+    k8s-rolebinding)
+      printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+      printf 'kind: RoleBinding\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$binding_name"
+      printf '  namespace: %s\n' "$resource_name"
+      printf 'subjects:\n'
+      printf '  - kind: ServiceAccount\n'
+      printf '    name: %s\n' "$resource_name"
+      printf '    namespace: %s\n' "$resource_name"
+      printf 'roleRef:\n'
+      printf '  apiGroup: rbac.authorization.k8s.io\n'
+      printf '  kind: Role\n'
+      printf '  name: %s\n' "$role_name"
+      ;;
+    k8s-clusterrole)
+      printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+      printf 'kind: ClusterRole\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$cluster_role_name"
+      printf 'rules: []\n'
+      ;;
+    k8s-clusterrolebinding)
+      printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+      printf 'kind: ClusterRoleBinding\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$cluster_binding_name"
+      printf 'subjects:\n'
+      printf '  - kind: ServiceAccount\n'
+      printf '    name: %s\n' "$resource_name"
+      printf '    namespace: %s\n' "$resource_name"
+      printf 'roleRef:\n'
+      printf '  apiGroup: rbac.authorization.k8s.io\n'
+      printf '  kind: ClusterRole\n'
+      printf '  name: %s\n' "$cluster_role_name"
+      ;;
+    k8s-persistentvolume)
+      printf 'apiVersion: v1\n'
+      printf 'kind: PersistentVolume\n'
+      printf 'metadata:\n'
+      printf '  name: %s-pv\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  capacity:\n'
+      printf '    storage: 10Gi\n'
+      printf '  accessModes:\n'
+      printf '    - ReadWriteOnce\n'
+      printf '  storageClassName: %s\n' "$storage_class_name"
+      printf '  hostPath:\n'
+      printf '    path: /mnt/data/%s\n' "$resource_name"
+      ;;
+    k8s-persistentvolumeclaim)
+      printf 'apiVersion: v1\n'
+      printf 'kind: PersistentVolumeClaim\n'
+      printf 'metadata:\n'
+      printf '  name: %s-pvc\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  accessModes:\n'
+      printf '    - ReadWriteOnce\n'
+      printf '  resources:\n'
+      printf '    requests:\n'
+      printf '      storage: 10Gi\n'
+      printf '  storageClassName: %s\n' "$storage_class_name"
+      ;;
+    k8s-storageclass)
+      printf 'apiVersion: storage.k8s.io/v1\n'
+      printf 'kind: StorageClass\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$storage_class_name"
+      printf 'provisioner: kubernetes.io/no-provisioner\n'
+      printf 'volumeBindingMode: WaitForFirstConsumer\n'
+      ;;
+    k8s-statefulset)
+      printf 'apiVersion: apps/v1\n'
+      printf 'kind: StatefulSet\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  serviceName: %s\n' "$resource_name"
+      printf '  replicas: 1\n'
+      printf '  selector:\n'
+      printf '    matchLabels:\n'
+      printf '      app: %s\n' "$resource_name"
+      printf '  template:\n'
+      printf '    metadata:\n'
+      printf '      labels:\n'
+      printf '        app: %s\n' "$resource_name"
+      printf '    spec:\n'
+      printf '      containers:\n'
+      printf '        - name: %s\n' "$resource_name"
+      printf '          image: registry.k8s.io/pause:3.10\n'
+      ;;
+    k8s-daemonset)
+      printf 'apiVersion: apps/v1\n'
+      printf 'kind: DaemonSet\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  selector:\n'
+      printf '    matchLabels:\n'
+      printf '      app: %s\n' "$resource_name"
+      printf '  template:\n'
+      printf '    metadata:\n'
+      printf '      labels:\n'
+      printf '        app: %s\n' "$resource_name"
+      printf '    spec:\n'
+      printf '      containers:\n'
+      printf '        - name: %s\n' "$resource_name"
+      printf '          image: registry.k8s.io/pause:3.10\n'
+      ;;
+    k8s-job)
+      printf 'apiVersion: batch/v1\n'
+      printf 'kind: Job\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  template:\n'
+      printf '    spec:\n'
+      printf '      restartPolicy: Never\n'
+      printf '      containers:\n'
+      printf '        - name: %s\n' "$resource_name"
+      printf '          image: busybox:1.36\n'
+      printf '          command: ["sh", "-c", "echo job complete"]\n'
+      ;;
+    k8s-cronjob)
+      printf 'apiVersion: batch/v1\n'
+      printf 'kind: CronJob\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  schedule: "0 * * * *"\n'
+      printf '  jobTemplate:\n'
+      printf '    spec:\n'
+      printf '      template:\n'
+      printf '        spec:\n'
+      printf '          restartPolicy: OnFailure\n'
+      printf '          containers:\n'
+      printf '            - name: %s\n' "$resource_name"
+      printf '              image: busybox:1.36\n'
+      printf '              command: ["sh", "-c", "echo cronjob complete"]\n'
+      ;;
+    k8s-horizontalpodautoscaler)
+      printf 'apiVersion: autoscaling/v2\n'
+      printf 'kind: HorizontalPodAutoscaler\n'
+      printf 'metadata:\n'
+      printf '  name: %s\n' "$resource_name"
+      printf 'spec:\n'
+      printf '  scaleTargetRef:\n'
+      printf '    apiVersion: apps/v1\n'
+      printf '    kind: Deployment\n'
+      printf '    name: %s\n' "$resource_name"
+      printf '  minReplicas: 1\n'
+      printf '  maxReplicas: 3\n'
+      printf '  metrics:\n'
+      printf '    - type: Resource\n'
+      printf '      resource:\n'
+      printf '        name: cpu\n'
+      printf '        target:\n'
+      printf '          type: Utilization\n'
+      printf '          averageUtilization: 80\n'
+      ;;
+    *)
+      fail "unknown k8s template in test expectation: $template"
+      ;;
+  esac
+}
+
 assert_template_file_equals() {
   local file=$1
   local template=$2
@@ -337,6 +708,15 @@ assert_template_file_equals() {
       ;;
     ansible)
       expected_ansible_content "$target_name" > "$expected_file"
+      ;;
+    dockerfile)
+      expected_dockerfile_content "$target_name" > "$expected_file"
+      ;;
+    docker-compose)
+      expected_docker_compose_content "$target_name" > "$expected_file"
+      ;;
+    k8s-*)
+      expected_k8s_template_content "$template" "$target_name" > "$expected_file"
       ;;
     *)
       rm -f "$expected_file"
@@ -400,6 +780,111 @@ run_capture_with_input() {
   RUN_STDERR=$(cat "$stderr_file")
 
   rm -f "$stdin_file" "$stdout_file" "$stderr_file"
+}
+
+target_path_for_template() {
+  case $1 in
+    dockerfile)
+      printf 'Dockerfile\n'
+      ;;
+    docker-compose)
+      printf 'compose.yaml\n'
+      ;;
+    k8s-namespace)
+      printf 'namespace.yaml\n'
+      ;;
+    k8s-pod)
+      printf 'pod.yaml\n'
+      ;;
+    k8s-deployment)
+      printf 'deployment.yaml\n'
+      ;;
+    k8s-service)
+      printf 'service.yaml\n'
+      ;;
+    k8s-configmap)
+      printf 'configmap.yaml\n'
+      ;;
+    k8s-secret)
+      printf 'secret.yaml\n'
+      ;;
+    k8s-ingress)
+      printf 'ingress.yaml\n'
+      ;;
+    k8s-networkpolicy)
+      printf 'networkpolicy.yaml\n'
+      ;;
+    k8s-serviceaccount)
+      printf 'serviceaccount.yaml\n'
+      ;;
+    k8s-role)
+      printf 'role.yaml\n'
+      ;;
+    k8s-rolebinding)
+      printf 'rolebinding.yaml\n'
+      ;;
+    k8s-clusterrole)
+      printf 'clusterrole.yaml\n'
+      ;;
+    k8s-clusterrolebinding)
+      printf 'clusterrolebinding.yaml\n'
+      ;;
+    k8s-persistentvolume)
+      printf 'persistentvolume.yaml\n'
+      ;;
+    k8s-persistentvolumeclaim)
+      printf 'persistentvolumeclaim.yaml\n'
+      ;;
+    k8s-storageclass)
+      printf 'storageclass.yaml\n'
+      ;;
+    k8s-statefulset)
+      printf 'statefulset.yaml\n'
+      ;;
+    k8s-daemonset)
+      printf 'daemonset.yaml\n'
+      ;;
+    k8s-job)
+      printf 'job.yaml\n'
+      ;;
+    k8s-cronjob)
+      printf 'cronjob.yaml\n'
+      ;;
+    k8s-horizontalpodautoscaler)
+      printf 'horizontalpodautoscaler.yaml\n'
+      ;;
+    *)
+      fail "unknown template target request: $1"
+      ;;
+  esac
+}
+
+all_new_templates() {
+  cat <<'EOF'
+dockerfile
+docker-compose
+k8s-namespace
+k8s-pod
+k8s-deployment
+k8s-service
+k8s-configmap
+k8s-secret
+k8s-ingress
+k8s-networkpolicy
+k8s-serviceaccount
+k8s-role
+k8s-rolebinding
+k8s-clusterrole
+k8s-clusterrolebinding
+k8s-persistentvolume
+k8s-persistentvolumeclaim
+k8s-storageclass
+k8s-statefulset
+k8s-daemonset
+k8s-job
+k8s-cronjob
+k8s-horizontalpodautoscaler
+EOF
 }
 
 test_plain_script_creation() {
@@ -493,6 +978,42 @@ test_ansible_template_creation_with_trailing_flag() {
   rm -rf "$sandbox"
 }
 
+test_additional_template_creation() {
+  local sandbox
+  local template
+  local target
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  while IFS= read -r template; do
+    target=$(target_path_for_template "$template")
+    run_capture "$MKSCRIPT_UNDER_TEST" --template "$template" "$target"
+    assert_status 0 "$RUN_STATUS" "$template creation should succeed"
+    assert_contains "$RUN_STDOUT" "Created file: $target" "$template creation should report the created file"
+    assert_template_file_equals "$target" "$template" "$target" 0 "$template should match the expected starter content"
+    assert_not_executable "$target" "$template should not be executable"
+  done < <(all_new_templates)
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_additional_template_creation_with_trailing_flag() {
+  local sandbox
+  local template
+  local target
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  while IFS= read -r template; do
+    target=$(target_path_for_template "$template")
+    run_capture "$MKSCRIPT_UNDER_TEST" "$target" -t "$template"
+    assert_status 0 "$RUN_STATUS" "$template should allow the template flag after the path"
+    assert_template_file_equals "$target" "$template" "$target" 0 "trailing $template template flag should create the expected starter content"
+  done < <(all_new_templates)
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
 test_terraform_template_rejects_strict_flag() {
   local sandbox
 
@@ -555,6 +1076,47 @@ test_ansible_template_rejects_global_flag() {
   rm -rf "$sandbox"
 }
 
+test_additional_templates_reject_strict_flag() {
+  local sandbox
+  local template
+  local target
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  while IFS= read -r template; do
+    target=$(target_path_for_template "$template")
+    run_capture "$MKSCRIPT_UNDER_TEST" --template "$template" --strict "$target"
+    assert_status 64 "$RUN_STATUS" "$template should reject strict mode"
+    assert_contains "$RUN_STDERR" '--strict is only supported with the bash template' "$template strict mode rejection should be explained"
+    assert_not_exists "$target" "rejected $template strict mode should not create a file"
+  done < <(all_new_templates)
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_additional_templates_reject_global_flag() {
+  local sandbox
+  local home_dir
+  local path_value
+  local template
+  local target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir"
+  cd "$sandbox"
+  while IFS= read -r template; do
+    target=$(target_path_for_template "$template")
+    run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" --template "$template" -g "$target"
+    assert_status 64 "$RUN_STATUS" "$template should reject global mode"
+    assert_contains "$RUN_STDERR" '--global is only supported with the bash template' "$template global mode rejection should be explained"
+    assert_not_exists "$target" "rejected $template global mode should not create a file"
+  done < <(all_new_templates)
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
 test_invalid_template_value() {
   local sandbox
 
@@ -582,7 +1144,8 @@ test_help_output() {
   assert_contains "$RUN_STDOUT" "quoted shell-style glob patterns like 'install-wifi*' are supported" 'help should document quoted glob lookup support'
   assert_contains "$RUN_STDOUT" 'quote patterns so your shell does not expand them first' 'help should explain why glob queries should be quoted'
   assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
-  assert_contains "$RUN_STDOUT" 'use bash, terraform, or ansible' 'help should list supported templates'
+  assert_contains "$RUN_STDOUT" 'use bash, terraform, ansible, dockerfile, docker-compose,' 'help should list the expanded template families'
+  assert_contains "$RUN_STDOUT" 'k8s-namespace, k8s-pod, k8s-deployment, k8s-service,' 'help should list Kubernetes starter templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
   assert_contains "$RUN_STDOUT" '-g, --global' 'help should document global mode'
   assert_contains "$RUN_STDOUT" 'create a global symlink for a new Bash script or an existing Bash file' 'help should explain dual-purpose global mode'
@@ -1701,10 +2264,14 @@ run_test test_terraform_template_creation
 run_test test_terraform_template_creation_with_trailing_flag
 run_test test_ansible_template_creation
 run_test test_ansible_template_creation_with_trailing_flag
+run_test test_additional_template_creation
+run_test test_additional_template_creation_with_trailing_flag
 run_test test_terraform_template_rejects_strict_flag
 run_test test_ansible_template_rejects_strict_flag
+run_test test_additional_templates_reject_strict_flag
 run_test test_terraform_template_rejects_global_flag
 run_test test_ansible_template_rejects_global_flag
+run_test test_additional_templates_reject_global_flag
 run_test test_invalid_template_value
 run_test test_help_output
 run_test test_version_output

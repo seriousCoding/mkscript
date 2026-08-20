@@ -20,8 +20,38 @@ try {
     if (-not (Select-String -Quiet -LiteralPath main.tf -Pattern 'required_version')) { throw 'terraform template failed' }
     & $command -t ansible site.yml
     if (-not (Select-String -Quiet -LiteralPath site.yml -Pattern 'hosts: all')) { throw 'ansible template failed' }
+    $additionalTemplates = @(
+        @{ Template = 'dockerfile'; Path = 'Dockerfile'; Needle = 'FROM alpine:3.22' }
+        @{ Template = 'docker-compose'; Path = 'compose.yaml'; Needle = 'services:' }
+        @{ Template = 'k8s-namespace'; Path = 'namespace.yaml'; Needle = 'kind: Namespace' }
+        @{ Template = 'k8s-pod'; Path = 'pod.yaml'; Needle = 'kind: Pod' }
+        @{ Template = 'k8s-deployment'; Path = 'deployment.yaml'; Needle = 'kind: Deployment' }
+        @{ Template = 'k8s-service'; Path = 'service.yaml'; Needle = 'kind: Service' }
+        @{ Template = 'k8s-configmap'; Path = 'configmap.yaml'; Needle = 'kind: ConfigMap' }
+        @{ Template = 'k8s-secret'; Path = 'secret.yaml'; Needle = 'kind: Secret' }
+        @{ Template = 'k8s-ingress'; Path = 'ingress.yaml'; Needle = 'kind: Ingress' }
+        @{ Template = 'k8s-networkpolicy'; Path = 'networkpolicy.yaml'; Needle = 'kind: NetworkPolicy' }
+        @{ Template = 'k8s-serviceaccount'; Path = 'serviceaccount.yaml'; Needle = 'kind: ServiceAccount' }
+        @{ Template = 'k8s-role'; Path = 'role.yaml'; Needle = 'kind: Role' }
+        @{ Template = 'k8s-rolebinding'; Path = 'rolebinding.yaml'; Needle = 'kind: RoleBinding' }
+        @{ Template = 'k8s-clusterrole'; Path = 'clusterrole.yaml'; Needle = 'kind: ClusterRole' }
+        @{ Template = 'k8s-clusterrolebinding'; Path = 'clusterrolebinding.yaml'; Needle = 'kind: ClusterRoleBinding' }
+        @{ Template = 'k8s-persistentvolume'; Path = 'persistentvolume.yaml'; Needle = 'kind: PersistentVolume' }
+        @{ Template = 'k8s-persistentvolumeclaim'; Path = 'persistentvolumeclaim.yaml'; Needle = 'kind: PersistentVolumeClaim' }
+        @{ Template = 'k8s-storageclass'; Path = 'storageclass.yaml'; Needle = 'kind: StorageClass' }
+        @{ Template = 'k8s-statefulset'; Path = 'statefulset.yaml'; Needle = 'kind: StatefulSet' }
+        @{ Template = 'k8s-daemonset'; Path = 'daemonset.yaml'; Needle = 'kind: DaemonSet' }
+        @{ Template = 'k8s-job'; Path = 'job.yaml'; Needle = 'kind: Job' }
+        @{ Template = 'k8s-cronjob'; Path = 'cronjob.yaml'; Needle = 'kind: CronJob' }
+        @{ Template = 'k8s-horizontalpodautoscaler'; Path = 'horizontalpodautoscaler.yaml'; Needle = 'kind: HorizontalPodAutoscaler' }
+    )
+    foreach ($case in $additionalTemplates) {
+        & $command -t $case.Template $case.Path
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $case.Path)) { throw "Windows template creation failed: $($case.Template)" }
+        if (-not (Select-String -Quiet -LiteralPath $case.Path -Pattern $case.Needle -SimpleMatch)) { throw "Windows template content failed: $($case.Template)" }
+    }
     $bashError = & $command -t bash nope 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 64 -or $bashError -notmatch 'expected cmd, terraform, or ansible') { throw 'Windows bash template rejection failed' }
+    if ($LASTEXITCODE -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
     & $command -g tool
     if (-not (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapper creation failed' }
     & $command -c tool

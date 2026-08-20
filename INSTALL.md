@@ -161,6 +161,9 @@ Common examples:
 ```bash
 mkscript demo
 mkscript -s deploy
+mkscript --template dockerfile Dockerfile
+mkscript --template docker-compose compose.yaml
+mkscript --template k8s-deployment deployment.yaml
 mkscript demo -g
 mkscript -c demo
 mkscript -r demo

@@ -12,9 +12,10 @@ Vcs-Git: https://github.com/seriousCoding/mkscript.git
 Package: mkscript
 Architecture: all
 Depends: ${misc:Depends}
-Description: Create executable Bash script skeletons safely
+Description: Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely
  mkscript creates executable Bash script files with a standard
- #!/usr/bin/env bash shebang.
+ #!/usr/bin/env bash shebang, plus Dockerfile, Docker Compose,
+ Kubernetes, Terraform, and Ansible starter files.
  .
  It refuses to overwrite existing files, symlinks, and directories,
  can optionally add set -euo pipefail via -s or --strict, can create

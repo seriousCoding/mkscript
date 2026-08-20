@@ -12,9 +12,9 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/seriousCoding/mkscript</projectSourceUrl>
     <bugTrackerUrl>https://github.com/seriousCoding/mkscript/issues</bugTrackerUrl>
-    <tags>mkscript bash cmd powershell terraform ansible cli</tags>
+    <tags>mkscript bash cmd powershell docker docker-compose kubernetes terraform ansible cli</tags>
     <summary>Create script and infrastructure starter files safely.</summary>
-    <description>mkscript creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths.</description>
+    <description>mkscript creates command-script, Bash, Dockerfile, Docker Compose, Kubernetes, Terraform, and Ansible starter files without overwriting existing paths.</description>
     <releaseNotes>https://github.com/seriousCoding/mkscript/releases/tag/v@VERSION@</releaseNotes>
   </metadata>
   <files>

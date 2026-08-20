@@ -1,6 +1,6 @@
 # mkscript
 
-`mkscript` creates command-script, Bash, Terraform, and Ansible starter files without overwriting existing paths. It uses native Bash on Linux/macOS and a native PowerShell implementation on Windows.
+`mkscript` creates command-script, Bash, Dockerfile, Docker Compose, Kubernetes, Terraform, and Ansible starter files without overwriting existing paths. It uses native Bash on Linux/macOS and a native PowerShell implementation on Windows.
 
 Quick links: [`INSTALL.md`](INSTALL.md) | [Public install site](https://seriouscoding.github.io/install/) | [Releases](https://github.com/seriousCoding/mkscript/releases) | [Checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Official packaging guide](docs/official-package-inclusion.md)
 
@@ -63,8 +63,9 @@ For versioned package links, checksum verification, and platform-specific notes,
 - On Linux and macOS, creates Bash starter files by default with `#!/usr/bin/env bash` and the standard metadata header.
 - On Windows, creates `.cmd` starter files by default with `@echo off` and the same metadata header rendered as `rem` comments.
 - `-s` and `--strict` add `set -euo pipefail` for Bash on Linux/macOS and `setlocal EnableExtensions EnableDelayedExpansion` for `.cmd` on Windows.
-- `--template terraform` and `--template ansible` work on every platform.
-- Windows supports `cmd`, `terraform`, and `ansible` templates. It does not support `--template bash`.
+- `--template terraform`, `--template ansible`, `--template dockerfile`, and `--template docker-compose` work on every platform.
+- Built-in Kubernetes starter templates work on every platform for `k8s-namespace`, `k8s-pod`, `k8s-deployment`, `k8s-service`, `k8s-configmap`, `k8s-secret`, `k8s-ingress`, `k8s-networkpolicy`, `k8s-serviceaccount`, `k8s-role`, `k8s-rolebinding`, `k8s-clusterrole`, `k8s-clusterrolebinding`, `k8s-persistentvolume`, `k8s-persistentvolumeclaim`, `k8s-storageclass`, `k8s-statefulset`, `k8s-daemonset`, `k8s-job`, `k8s-cronjob`, and `k8s-horizontalpodautoscaler`.
+- Windows supports `cmd` plus the non-script templates above. It does not support `--template bash`.
 - `-g`, `-c`, `-r`, and `-mv` manage Bash symlinks on Linux/macOS and managed `.cmd` wrappers on Windows.
 - `-f` and `--files` list or look up platform-native commands and files.
 - Refuses to overwrite existing files, symlinks, directories, or managed wrapper paths.
@@ -146,6 +147,24 @@ This creates:
   hosts: all
   gather_facts: false
   tasks: []
+```
+
+Dockerfile starter:
+
+```bash
+mkscript --template dockerfile Dockerfile
+```
+
+Docker Compose starter:
+
+```bash
+mkscript --template docker-compose compose.yaml
+```
+
+Kubernetes Deployment starter:
+
+```bash
+mkscript --template k8s-deployment deployment.yaml
 ```
 
 Global shortcut:
@@ -265,6 +284,8 @@ mkscript --template terraform main.tf
 mkscript main.tf -t terraform
 mkscript -t ansible site.yml
 mkscript site.yml --template ansible
+mkscript --template dockerfile Dockerfile
+mkscript deployment.yaml --template k8s-deployment
 ```
 
 ## Exit codes
@@ -344,6 +365,9 @@ mkscript -f 'install-wifi*'
 - On Windows, `--template cmd` is the default behavior.
 - `--template terraform` creates a non-executable `.tf` starter file.
 - `--template ansible` creates a non-executable YAML playbook starter file.
+- `--template dockerfile` creates a non-executable Dockerfile starter.
+- `--template docker-compose` creates a non-executable Compose YAML starter.
+- Built-in Kubernetes templates on every platform are `k8s-namespace`, `k8s-pod`, `k8s-deployment`, `k8s-service`, `k8s-configmap`, `k8s-secret`, `k8s-ingress`, `k8s-networkpolicy`, `k8s-serviceaccount`, `k8s-role`, `k8s-rolebinding`, `k8s-clusterrole`, `k8s-clusterrolebinding`, `k8s-persistentvolume`, `k8s-persistentvolumeclaim`, `k8s-storageclass`, `k8s-statefulset`, `k8s-daemonset`, `k8s-job`, `k8s-cronjob`, and `k8s-horizontalpodautoscaler`.
 - On Linux and macOS, `-s`, `-g`, `-mv`, `-c`, and `-r` are Bash-only options.
 - On Windows, `-s` applies to the `cmd` template, `-g`, `-mv`, `-c`, and `-r` apply to the wrapper workflow, and `--template bash` is not supported.
 

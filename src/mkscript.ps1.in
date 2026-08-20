@@ -20,11 +20,18 @@ Usage:
   mkscript -f|--files [DEPTH]
   mkscript -f|--files NAME [NAME ...]
 
-Create a new Windows command, Terraform, or Ansible file.
+Create a new Windows command, Docker, Kubernetes, Terraform, or Ansible file.
 Global wrapper management applies to command scripts only.
 
 Options:
-  -t, --template TEMPLATE  use cmd, terraform, or ansible
+  -t, --template TEMPLATE  use cmd, terraform, ansible, dockerfile, docker-compose,
+                           k8s-namespace, k8s-pod, k8s-deployment, k8s-service,
+                           k8s-configmap, k8s-secret, k8s-ingress, k8s-networkpolicy,
+                           k8s-serviceaccount, k8s-role, k8s-rolebinding,
+                           k8s-clusterrole, k8s-clusterrolebinding,
+                           k8s-persistentvolume, k8s-persistentvolumeclaim,
+                           k8s-storageclass, k8s-statefulset, k8s-daemonset,
+                           k8s-job, k8s-cronjob, or k8s-horizontalpodautoscaler
   -f, --files              list or look up native Windows files/commands
   -mv                      move a command script and update its wrapper
   -s, --strict             enable delayed expansion in a generated .cmd file
@@ -90,6 +97,28 @@ function Confirm([string] $Prompt) {
     return $answer -match '^(?i:y|yes)$'
 }
 
+function Get-TemplateStem([string] $TargetName) {
+    $leaf = [IO.Path]::GetFileName($TargetName)
+    $stem = [IO.Path]::GetFileNameWithoutExtension($leaf)
+    if ([string]::IsNullOrWhiteSpace($stem)) { return $leaf }
+    return $stem
+}
+
+function Get-ManifestSafeName([string] $TargetName) {
+    $stem = (Get-TemplateStem $TargetName).ToLowerInvariant()
+    $normalized = $stem -replace '[\s_]+', '-' -replace '[^a-z0-9.-]', '-'
+    $normalized = $normalized -replace '-{2,}', '-' -replace '\.{2,}', '.'
+    $normalized = $normalized -replace '^[^a-z0-9]+', '' -replace '[^a-z0-9]+$', ''
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        Stop-Mkscript "failed to derive a manifest-safe resource name from path: $TargetName"
+    }
+    return $normalized
+}
+
+function Get-StorageClassName([string] $TargetName) {
+    return "$(Get-ManifestSafeName $TargetName)-storage"
+}
+
 function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
     $parent = Split-Path -Parent (Resolve-FullPath $Target)
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) { Stop-Mkscript "parent directory does not exist: $parent" }
@@ -97,14 +126,45 @@ function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
     $leaf = Split-Path -Leaf $Target
     $creator = [Environment]::UserName
     $date = Get-Date -Format 'yyyy-MM-dd'
+    $resourceName = Get-ManifestSafeName $Target
+    $storageClassName = Get-StorageClassName $Target
+    $roleName = "$resourceName-role"
+    $bindingName = "$resourceName-binding"
+    $clusterRoleName = "$resourceName-clusterrole"
+    $clusterBindingName = "$resourceName-clusterrolebinding"
+    $serviceName = Get-ManifestSafeName $Target
+    $hashHeader = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '')
     switch ($Template) {
         'cmd' {
             $lines = @('@echo off', "rem Script: $leaf", 'rem Description:', "rem Created: $date", "rem Creator: $creator")
             if ($Strict) { $lines += 'setlocal EnableExtensions EnableDelayedExpansion' }
         }
-        'terraform' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', 'terraform {', '  required_version = ">= 1.0.0"', '}') }
-        'ansible' { $lines = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '', '---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
-        default { Stop-Mkscript "unsupported template: $Template (expected cmd, terraform, or ansible)" $UsageError }
+        'terraform' { $lines = $hashHeader + @('terraform {', '  required_version = ">= 1.0.0"', '}') }
+        'ansible' { $lines = $hashHeader + @('---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
+        'dockerfile' { $lines = $hashHeader + @('FROM alpine:3.22', 'WORKDIR /app', 'COPY . .', 'CMD ["sh"]') }
+        'docker-compose' { $lines = $hashHeader + @('services:', "  $serviceName:", '    image: nginx:1.29-alpine', '    ports:', '      - "8080:80"') }
+        'k8s-namespace' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Namespace', 'metadata:', "  name: $resourceName") }
+        'k8s-pod' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Pod', 'metadata:', "  name: $resourceName", '  labels:', "    app: $resourceName", 'spec:', '  containers:', "    - name: $resourceName", '      image: registry.k8s.io/pause:3.10') }
+        'k8s-deployment' { $lines = $hashHeader + @('apiVersion: apps/v1', 'kind: Deployment', 'metadata:', "  name: $resourceName", 'spec:', '  replicas: 1', '  selector:', '    matchLabels:', "      app: $resourceName", '  template:', '    metadata:', '      labels:', "        app: $resourceName", '    spec:', '      containers:', "        - name: $resourceName", '          image: registry.k8s.io/pause:3.10') }
+        'k8s-service' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Service', 'metadata:', "  name: $resourceName", 'spec:', '  selector:', "    app: $resourceName", '  ports:', '    - port: 80', '      targetPort: 80') }
+        'k8s-configmap' { $lines = $hashHeader + @('apiVersion: v1', 'kind: ConfigMap', 'metadata:', "  name: $resourceName", 'data: {}') }
+        'k8s-secret' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Secret', 'metadata:', "  name: $resourceName", 'type: Opaque', 'stringData: {}') }
+        'k8s-ingress' { $lines = $hashHeader + @('apiVersion: networking.k8s.io/v1', 'kind: Ingress', 'metadata:', "  name: $resourceName", 'spec:', '  rules:', "    - host: $resourceName.example.com", '      http:', '        paths:', '          - path: /', '            pathType: Prefix', '            backend:', '              service:', "                name: $resourceName", '                port:', '                  number: 80') }
+        'k8s-networkpolicy' { $lines = $hashHeader + @('apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', "  name: $resourceName", 'spec:', '  podSelector:', '    matchLabels:', "      app: $resourceName", '  policyTypes:', '    - Ingress', '  ingress: []') }
+        'k8s-serviceaccount' { $lines = $hashHeader + @('apiVersion: v1', 'kind: ServiceAccount', 'metadata:', "  name: $resourceName") }
+        'k8s-role' { $lines = $hashHeader + @('apiVersion: rbac.authorization.k8s.io/v1', 'kind: Role', 'metadata:', "  name: $roleName", "  namespace: $resourceName", 'rules: []') }
+        'k8s-rolebinding' { $lines = $hashHeader + @('apiVersion: rbac.authorization.k8s.io/v1', 'kind: RoleBinding', 'metadata:', "  name: $bindingName", "  namespace: $resourceName", 'subjects:', '  - kind: ServiceAccount', "    name: $resourceName", "    namespace: $resourceName", 'roleRef:', '  apiGroup: rbac.authorization.k8s.io', '  kind: Role', "  name: $roleName") }
+        'k8s-clusterrole' { $lines = $hashHeader + @('apiVersion: rbac.authorization.k8s.io/v1', 'kind: ClusterRole', 'metadata:', "  name: $clusterRoleName", 'rules: []') }
+        'k8s-clusterrolebinding' { $lines = $hashHeader + @('apiVersion: rbac.authorization.k8s.io/v1', 'kind: ClusterRoleBinding', 'metadata:', "  name: $clusterBindingName", 'subjects:', '  - kind: ServiceAccount', "    name: $resourceName", "    namespace: $resourceName", 'roleRef:', '  apiGroup: rbac.authorization.k8s.io', '  kind: ClusterRole', "  name: $clusterRoleName") }
+        'k8s-persistentvolume' { $lines = $hashHeader + @('apiVersion: v1', 'kind: PersistentVolume', 'metadata:', "  name: $resourceName-pv", 'spec:', '  capacity:', '    storage: 10Gi', '  accessModes:', '    - ReadWriteOnce', "  storageClassName: $storageClassName", '  hostPath:', "    path: /mnt/data/$resourceName") }
+        'k8s-persistentvolumeclaim' { $lines = $hashHeader + @('apiVersion: v1', 'kind: PersistentVolumeClaim', 'metadata:', "  name: $resourceName-pvc", 'spec:', '  accessModes:', '    - ReadWriteOnce', '  resources:', '    requests:', '      storage: 10Gi', "  storageClassName: $storageClassName") }
+        'k8s-storageclass' { $lines = $hashHeader + @('apiVersion: storage.k8s.io/v1', 'kind: StorageClass', 'metadata:', "  name: $storageClassName", 'provisioner: kubernetes.io/no-provisioner', 'volumeBindingMode: WaitForFirstConsumer') }
+        'k8s-statefulset' { $lines = $hashHeader + @('apiVersion: apps/v1', 'kind: StatefulSet', 'metadata:', "  name: $resourceName", 'spec:', "  serviceName: $resourceName", '  replicas: 1', '  selector:', '    matchLabels:', "      app: $resourceName", '  template:', '    metadata:', '      labels:', "        app: $resourceName", '    spec:', '      containers:', "        - name: $resourceName", '          image: registry.k8s.io/pause:3.10') }
+        'k8s-daemonset' { $lines = $hashHeader + @('apiVersion: apps/v1', 'kind: DaemonSet', 'metadata:', "  name: $resourceName", 'spec:', '  selector:', '    matchLabels:', "      app: $resourceName", '  template:', '    metadata:', '      labels:', "        app: $resourceName", '    spec:', '      containers:', "        - name: $resourceName", '          image: registry.k8s.io/pause:3.10') }
+        'k8s-job' { $lines = $hashHeader + @('apiVersion: batch/v1', 'kind: Job', 'metadata:', "  name: $resourceName", 'spec:', '  template:', '    spec:', '      restartPolicy: Never', '      containers:', "        - name: $resourceName", '          image: busybox:1.36', '          command: ["sh", "-c", "echo job complete"]') }
+        'k8s-cronjob' { $lines = $hashHeader + @('apiVersion: batch/v1', 'kind: CronJob', 'metadata:', "  name: $resourceName", 'spec:', '  schedule: "0 * * * *"', '  jobTemplate:', '    spec:', '      template:', '        spec:', '          restartPolicy: OnFailure', '          containers:', "            - name: $resourceName", '              image: busybox:1.36', '              command: ["sh", "-c", "echo cronjob complete"]') }
+        'k8s-horizontalpodautoscaler' { $lines = $hashHeader + @('apiVersion: autoscaling/v2', 'kind: HorizontalPodAutoscaler', 'metadata:', "  name: $resourceName", 'spec:', '  scaleTargetRef:', '    apiVersion: apps/v1', '    kind: Deployment', "    name: $resourceName", '  minReplicas: 1', '  maxReplicas: 3', '  metrics:', '    - type: Resource', '      resource:', '        name: cpu', '        target:', '          type: Utilization', '          averageUtilization: 80') }
+        default { Stop-Mkscript "unsupported template: $Template (expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-* template)" $UsageError }
     }
     $lines | Set-Content -LiteralPath $Target -Encoding UTF8
     Write-Output "Created '$Target'"
@@ -185,7 +245,7 @@ if ($mode -eq 'remove') {
     if (-not (Confirm "Remove wrapper '$wrapper'?")) { Stop-Mkscript 'wrapper removal cancelled' }
     Remove-Item -LiteralPath $wrapper -Force; Write-Output "Removed wrapper '$wrapper'"; exit 0
 }
-if ($template -notin 'cmd','terraform','ansible') { Stop-Mkscript "unsupported template: $template (expected cmd, terraform, or ansible)" $UsageError }
+if ($template -notin 'cmd','terraform','ansible','dockerfile','docker-compose','k8s-namespace','k8s-pod','k8s-deployment','k8s-service','k8s-configmap','k8s-secret','k8s-ingress','k8s-networkpolicy','k8s-serviceaccount','k8s-role','k8s-rolebinding','k8s-clusterrole','k8s-clusterrolebinding','k8s-persistentvolume','k8s-persistentvolumeclaim','k8s-storageclass','k8s-statefulset','k8s-daemonset','k8s-job','k8s-cronjob','k8s-horizontalpodautoscaler') { Stop-Mkscript "unsupported template: $template (expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-* template)" $UsageError }
 if ($strict -and $template -ne 'cmd') { Stop-Mkscript '--strict is only supported with the cmd template' $UsageError }
 if ($global -and $template -ne 'cmd') { Stop-Mkscript '--global is only supported with the cmd template' $UsageError }
 if (Test-Path -LiteralPath $target) {

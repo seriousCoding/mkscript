@@ -9,12 +9,15 @@ PackageName: mkscript
 PackageUrl: https://github.com/seriousCoding/mkscript
 License: MIT
 LicenseUrl: https://github.com/seriousCoding/mkscript/blob/main/LICENSE
-ShortDescription: Create command-script, Bash, Terraform, and Ansible starter files safely.
+ShortDescription: Create command-script, Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely.
 Moniker: mkscript
 Tags:
   - ansible
   - bash
   - cmd
+  - docker
+  - docker-compose
+  - kubernetes
   - powershell
   - terraform
 ReleaseNotesUrl: https://github.com/seriousCoding/mkscript/releases/tag/v@VERSION@

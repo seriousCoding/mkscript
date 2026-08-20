@@ -14,7 +14,7 @@ mkdir -p "$(dirname "$output")"
 
 cat > "$output" <<EOF
 class Mkscript < Formula
-  desc "Create Bash, Terraform, and Ansible starter files safely"
+  desc "Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely"
   homepage "https://github.com/seriousCoding/mkscript"
   url "$url"
   sha256 "$sha256"
@@ -67,6 +67,28 @@ class Mkscript < Formula
     assert_equal "  hosts: all\\n", ansible_lines[7]
     assert_equal "  gather_facts: false\\n", ansible_lines[8]
     assert_equal "  tasks: []\\n", ansible_lines[9]
+
+    system bin/"mkscript", "--template", "dockerfile", "Dockerfile"
+    dockerfile_lines = (testpath/"Dockerfile").read.lines
+    assert_equal "# File: Dockerfile\\n", dockerfile_lines[0]
+    assert_equal "# Description:\\n", dockerfile_lines[1]
+    assert_match(/^# Created: \\d{4}-\\d{2}-\\d{2}\\n$/, dockerfile_lines[2])
+    assert_match(/^# Creator: .+\\n$/, dockerfile_lines[3])
+    assert_equal "\\n", dockerfile_lines[4]
+    assert_equal "FROM alpine:3.22\\n", dockerfile_lines[5]
+    assert_equal "WORKDIR /app\\n", dockerfile_lines[6]
+    assert_equal "COPY . .\\n", dockerfile_lines[7]
+    assert_equal "CMD [\\"sh\\"]\\n", dockerfile_lines[8]
+
+    system bin/"mkscript", "--template", "k8s-deployment", "deployment.yaml"
+    deployment_lines = (testpath/"deployment.yaml").read.lines
+    assert_equal "# File: deployment.yaml\\n", deployment_lines[0]
+    assert_equal "# Description:\\n", deployment_lines[1]
+    assert_match(/^# Created: \\d{4}-\\d{2}-\\d{2}\\n$/, deployment_lines[2])
+    assert_match(/^# Creator: .+\\n$/, deployment_lines[3])
+    assert_equal "\\n", deployment_lines[4]
+    assert_equal "apiVersion: apps/v1\\n", deployment_lines[5]
+    assert_equal "kind: Deployment\\n", deployment_lines[6]
   end
 end
 EOF

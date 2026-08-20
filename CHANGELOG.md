@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Add `dockerfile` and `docker-compose` starter templates on Linux, macOS, and Windows.
+- Add built-in Kubernetes starter templates for namespace, workload, service, RBAC, storage, and autoscaling manifests across Unix and Windows.
+
+### Changed
+
+- Expand repository documentation, package metadata, and smoke tests to reflect the broader template catalog.
+
 ## [1.5.0] - 2026-08-12
 
 ### Added

@@ -14,12 +14,19 @@ Usage:
   mkscript -f|--files [DEPTH]
   mkscript -f|--files NAME [NAME ...]
 
-Create a new file from a Bash, Terraform, or Ansible template.
+Create a new file from a Bash, Docker, Kubernetes, Terraform, or Ansible template.
 Global link management applies to Bash templates only.
 
 Options:
   -t, --template TEMPLATE
-                  use bash, terraform, or ansible
+                  use bash, terraform, ansible, dockerfile, docker-compose,
+                  k8s-namespace, k8s-pod, k8s-deployment, k8s-service,
+                  k8s-configmap, k8s-secret, k8s-ingress, k8s-networkpolicy,
+                  k8s-serviceaccount, k8s-role, k8s-rolebinding,
+                  k8s-clusterrole, k8s-clusterrolebinding,
+                  k8s-persistentvolume, k8s-persistentvolumeclaim,
+                  k8s-storageclass, k8s-statefulset, k8s-daemonset,
+                  k8s-job, k8s-cronjob, or k8s-horizontalpodautoscaler
   -f, --files     list matching files under the current tree
                   DEPTH 0-9 limits subfolder scanning; 0 means current folder only
                   NAME arguments, or piped newline-separated names, perform lookup mode
@@ -109,10 +116,17 @@ name_matches_query() {
 
 validate_template() {
   case $1 in
-    bash|terraform|ansible)
+    bash|terraform|ansible|dockerfile|docker-compose|\
+    k8s-namespace|k8s-pod|k8s-deployment|k8s-service|\
+    k8s-configmap|k8s-secret|k8s-ingress|k8s-networkpolicy|\
+    k8s-serviceaccount|k8s-role|k8s-rolebinding|\
+    k8s-clusterrole|k8s-clusterrolebinding|\
+    k8s-persistentvolume|k8s-persistentvolumeclaim|\
+    k8s-storageclass|k8s-statefulset|k8s-daemonset|\
+    k8s-job|k8s-cronjob|k8s-horizontalpodautoscaler)
       ;;
     *)
-      fail_usage "unsupported template: $1 (expected bash, terraform, or ansible)"
+      fail_usage "unsupported template: $1 (expected bash, terraform, ansible, dockerfile, docker-compose, or a supported k8s-* template)"
       ;;
   esac
 }
@@ -163,6 +177,54 @@ base_name() {
       printf '%s\n' "$path"
       ;;
   esac
+}
+
+template_stem_name() {
+  local base
+
+  base=$(base_name "$1")
+  case $base in
+    *.*)
+      printf '%s\n' "${base%.*}"
+      ;;
+    *)
+      printf '%s\n' "$base"
+      ;;
+  esac
+}
+
+normalize_manifest_name() {
+  local raw_name=$1
+  local context=$2
+  local normalized
+
+  normalized=$(
+    printf '%s' "$raw_name" |
+      tr '[:upper:]' '[:lower:]' |
+      sed \
+        -e 's/[[:space:]_][[:space:]_]*/-/g' \
+        -e 's/[^a-z0-9.-]/-/g' \
+        -e 's/-\{2,\}/-/g' \
+        -e 's/\.\{2,\}/./g' \
+        -e 's/^[^a-z0-9]*//' \
+        -e 's/[^a-z0-9]*$//'
+  )
+
+  if [ -z "$normalized" ]; then
+    fail_create "failed to derive a manifest-safe resource name from path: $context"
+  fi
+
+  printf '%s\n' "$normalized"
+}
+
+manifest_resource_name() {
+  local context=$1
+
+  normalize_manifest_name "$(template_stem_name "$context")" "$context"
+}
+
+manifest_storage_class_name() {
+  printf '%s-storage\n' "$(manifest_resource_name "$1")"
 }
 
 safe_command_path() {
@@ -444,8 +506,22 @@ write_template() {
   local template=$2
   local strict_enabled=$3
   local target_name
+  local resource_name
+  local storage_class_name
+  local role_name
+  local binding_name
+  local cluster_role_name
+  local cluster_binding_name
+  local service_name
 
   target_name=$(base_name "$destination")
+  resource_name=$(manifest_resource_name "$destination")
+  storage_class_name=$(manifest_storage_class_name "$destination")
+  role_name="${resource_name}-role"
+  binding_name="${resource_name}-binding"
+  cluster_role_name="${resource_name}-clusterrole"
+  cluster_binding_name="${resource_name}-clusterrolebinding"
+  service_name=$(normalize_manifest_name "$(template_stem_name "$destination")" "$destination")
 
   case $template in
     bash)
@@ -475,6 +551,380 @@ write_template() {
         printf '  hosts: all\n'
         printf '  gather_facts: false\n'
         printf '  tasks: []\n'
+      } > "$destination"
+      ;;
+    dockerfile)
+      {
+        write_header "$target_name" dockerfile
+        printf '\n'
+        printf 'FROM alpine:3.22\n'
+        printf 'WORKDIR /app\n'
+        printf 'COPY . .\n'
+        printf 'CMD ["sh"]\n'
+      } > "$destination"
+      ;;
+    docker-compose)
+      {
+        write_header "$target_name" docker-compose
+        printf '\n'
+        printf 'services:\n'
+        printf '  %s:\n' "$service_name"
+        printf '    image: nginx:1.29-alpine\n'
+        printf '    ports:\n'
+        printf '      - "8080:80"\n'
+      } > "$destination"
+      ;;
+    k8s-namespace)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: Namespace\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+      } > "$destination"
+      ;;
+    k8s-pod)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: Pod\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf '  labels:\n'
+        printf '    app: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  containers:\n'
+        printf '    - name: %s\n' "$resource_name"
+        printf '      image: registry.k8s.io/pause:3.10\n'
+      } > "$destination"
+      ;;
+    k8s-deployment)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: apps/v1\n'
+        printf 'kind: Deployment\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  replicas: 1\n'
+        printf '  selector:\n'
+        printf '    matchLabels:\n'
+        printf '      app: %s\n' "$resource_name"
+        printf '  template:\n'
+        printf '    metadata:\n'
+        printf '      labels:\n'
+        printf '        app: %s\n' "$resource_name"
+        printf '    spec:\n'
+        printf '      containers:\n'
+        printf '        - name: %s\n' "$resource_name"
+        printf '          image: registry.k8s.io/pause:3.10\n'
+      } > "$destination"
+      ;;
+    k8s-service)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: Service\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  selector:\n'
+        printf '    app: %s\n' "$resource_name"
+        printf '  ports:\n'
+        printf '    - port: 80\n'
+        printf '      targetPort: 80\n'
+      } > "$destination"
+      ;;
+    k8s-configmap)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: ConfigMap\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'data: {}\n'
+      } > "$destination"
+      ;;
+    k8s-secret)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: Secret\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'type: Opaque\n'
+        printf 'stringData: {}\n'
+      } > "$destination"
+      ;;
+    k8s-ingress)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: networking.k8s.io/v1\n'
+        printf 'kind: Ingress\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  rules:\n'
+        printf '    - host: %s.example.com\n' "$resource_name"
+        printf '      http:\n'
+        printf '        paths:\n'
+        printf '          - path: /\n'
+        printf '            pathType: Prefix\n'
+        printf '            backend:\n'
+        printf '              service:\n'
+        printf '                name: %s\n' "$resource_name"
+        printf '                port:\n'
+        printf '                  number: 80\n'
+      } > "$destination"
+      ;;
+    k8s-networkpolicy)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: networking.k8s.io/v1\n'
+        printf 'kind: NetworkPolicy\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  podSelector:\n'
+        printf '    matchLabels:\n'
+        printf '      app: %s\n' "$resource_name"
+        printf '  policyTypes:\n'
+        printf '    - Ingress\n'
+        printf '  ingress: []\n'
+      } > "$destination"
+      ;;
+    k8s-serviceaccount)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: ServiceAccount\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+      } > "$destination"
+      ;;
+    k8s-role)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+        printf 'kind: Role\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$role_name"
+        printf '  namespace: %s\n' "$resource_name"
+        printf 'rules: []\n'
+      } > "$destination"
+      ;;
+    k8s-rolebinding)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+        printf 'kind: RoleBinding\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$binding_name"
+        printf '  namespace: %s\n' "$resource_name"
+        printf 'subjects:\n'
+        printf '  - kind: ServiceAccount\n'
+        printf '    name: %s\n' "$resource_name"
+        printf '    namespace: %s\n' "$resource_name"
+        printf 'roleRef:\n'
+        printf '  apiGroup: rbac.authorization.k8s.io\n'
+        printf '  kind: Role\n'
+        printf '  name: %s\n' "$role_name"
+      } > "$destination"
+      ;;
+    k8s-clusterrole)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+        printf 'kind: ClusterRole\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$cluster_role_name"
+        printf 'rules: []\n'
+      } > "$destination"
+      ;;
+    k8s-clusterrolebinding)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: rbac.authorization.k8s.io/v1\n'
+        printf 'kind: ClusterRoleBinding\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$cluster_binding_name"
+        printf 'subjects:\n'
+        printf '  - kind: ServiceAccount\n'
+        printf '    name: %s\n' "$resource_name"
+        printf '    namespace: %s\n' "$resource_name"
+        printf 'roleRef:\n'
+        printf '  apiGroup: rbac.authorization.k8s.io\n'
+        printf '  kind: ClusterRole\n'
+        printf '  name: %s\n' "$cluster_role_name"
+      } > "$destination"
+      ;;
+    k8s-persistentvolume)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: PersistentVolume\n'
+        printf 'metadata:\n'
+        printf '  name: %s-pv\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  capacity:\n'
+        printf '    storage: 10Gi\n'
+        printf '  accessModes:\n'
+        printf '    - ReadWriteOnce\n'
+        printf '  storageClassName: %s\n' "$storage_class_name"
+        printf '  hostPath:\n'
+        printf '    path: /mnt/data/%s\n' "$resource_name"
+      } > "$destination"
+      ;;
+    k8s-persistentvolumeclaim)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: v1\n'
+        printf 'kind: PersistentVolumeClaim\n'
+        printf 'metadata:\n'
+        printf '  name: %s-pvc\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  accessModes:\n'
+        printf '    - ReadWriteOnce\n'
+        printf '  resources:\n'
+        printf '    requests:\n'
+        printf '      storage: 10Gi\n'
+        printf '  storageClassName: %s\n' "$storage_class_name"
+      } > "$destination"
+      ;;
+    k8s-storageclass)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: storage.k8s.io/v1\n'
+        printf 'kind: StorageClass\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$storage_class_name"
+        printf 'provisioner: kubernetes.io/no-provisioner\n'
+        printf 'volumeBindingMode: WaitForFirstConsumer\n'
+      } > "$destination"
+      ;;
+    k8s-statefulset)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: apps/v1\n'
+        printf 'kind: StatefulSet\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  serviceName: %s\n' "$resource_name"
+        printf '  replicas: 1\n'
+        printf '  selector:\n'
+        printf '    matchLabels:\n'
+        printf '      app: %s\n' "$resource_name"
+        printf '  template:\n'
+        printf '    metadata:\n'
+        printf '      labels:\n'
+        printf '        app: %s\n' "$resource_name"
+        printf '    spec:\n'
+        printf '      containers:\n'
+        printf '        - name: %s\n' "$resource_name"
+        printf '          image: registry.k8s.io/pause:3.10\n'
+      } > "$destination"
+      ;;
+    k8s-daemonset)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: apps/v1\n'
+        printf 'kind: DaemonSet\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  selector:\n'
+        printf '    matchLabels:\n'
+        printf '      app: %s\n' "$resource_name"
+        printf '  template:\n'
+        printf '    metadata:\n'
+        printf '      labels:\n'
+        printf '        app: %s\n' "$resource_name"
+        printf '    spec:\n'
+        printf '      containers:\n'
+        printf '        - name: %s\n' "$resource_name"
+        printf '          image: registry.k8s.io/pause:3.10\n'
+      } > "$destination"
+      ;;
+    k8s-job)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: batch/v1\n'
+        printf 'kind: Job\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  template:\n'
+        printf '    spec:\n'
+        printf '      restartPolicy: Never\n'
+        printf '      containers:\n'
+        printf '        - name: %s\n' "$resource_name"
+        printf '          image: busybox:1.36\n'
+        printf '          command: ["sh", "-c", "echo job complete"]\n'
+      } > "$destination"
+      ;;
+    k8s-cronjob)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: batch/v1\n'
+        printf 'kind: CronJob\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  schedule: "0 * * * *"\n'
+        printf '  jobTemplate:\n'
+        printf '    spec:\n'
+        printf '      template:\n'
+        printf '        spec:\n'
+        printf '          restartPolicy: OnFailure\n'
+        printf '          containers:\n'
+        printf '            - name: %s\n' "$resource_name"
+        printf '              image: busybox:1.36\n'
+        printf '              command: ["sh", "-c", "echo cronjob complete"]\n'
+      } > "$destination"
+      ;;
+    k8s-horizontalpodautoscaler)
+      {
+        write_header "$target_name" "$template"
+        printf '\n'
+        printf 'apiVersion: autoscaling/v2\n'
+        printf 'kind: HorizontalPodAutoscaler\n'
+        printf 'metadata:\n'
+        printf '  name: %s\n' "$resource_name"
+        printf 'spec:\n'
+        printf '  scaleTargetRef:\n'
+        printf '    apiVersion: apps/v1\n'
+        printf '    kind: Deployment\n'
+        printf '    name: %s\n' "$resource_name"
+        printf '  minReplicas: 1\n'
+        printf '  maxReplicas: 3\n'
+        printf '  metrics:\n'
+        printf '    - type: Resource\n'
+        printf '      resource:\n'
+        printf '        name: cpu\n'
+        printf '        target:\n'
+        printf '          type: Utilization\n'
+        printf '          averageUtilization: 80\n'
       } > "$destination"
       ;;
   esac

@@ -1,4 +1,4 @@
-.TH MKSCRIPT 1 "2026-08-12" "mkscript 1.5.0" "User Commands"
+.TH MKSCRIPT 1 "2026-08-20" "mkscript 1.5.0" "User Commands"
 .SH NAME
 mkscript \- create starter files safely across Linux, macOS, and Windows
 .SH SYNOPSIS
@@ -29,7 +29,7 @@ mkscript \- create starter files safely across Linux, macOS, and Windows
 .I target
 .SH DESCRIPTION
 .B mkscript
-creates a new file at the requested path from a platform-native script template or from a Terraform or Ansible starter template.
+creates a new file at the requested path from a platform-native script template or from a Docker, Kubernetes, Terraform, or Ansible starter template.
 On Linux and macOS, the default template is Bash.
 On native Windows, the PowerShell implementation creates a .cmd file by default.
 .PP
@@ -53,7 +53,7 @@ followed by the same metadata header rendered as
 .B rem
 comments.
 .PP
-For Terraform and Ansible files on every platform,
+For Dockerfile, Docker Compose, Kubernetes, Terraform, and Ansible files on every platform,
 .B mkscript
 writes the same metadata header with
 .B File
@@ -110,13 +110,38 @@ On Linux and macOS,
 and
 .B \-r
 are supported only for the Bash template.
-On Windows, the supported templates are
-.BR cmd ,
-.BR terraform ,
-and
-.BR ansible ;
+On Windows, the default script template is
+.BR cmd .
 Windows does not support
 .BR \-\-template\ bash .
+.PP
+The non-script templates supported on every platform are
+.BR terraform ,
+.BR ansible ,
+.BR dockerfile ,
+.BR docker-compose ,
+.BR k8s-namespace ,
+.BR k8s-pod ,
+.BR k8s-deployment ,
+.BR k8s-service ,
+.BR k8s-configmap ,
+.BR k8s-secret ,
+.BR k8s-ingress ,
+.BR k8s-networkpolicy ,
+.BR k8s-serviceaccount ,
+.BR k8s-role ,
+.BR k8s-rolebinding ,
+.BR k8s-clusterrole ,
+.BR k8s-clusterrolebinding ,
+.BR k8s-persistentvolume ,
+.BR k8s-persistentvolumeclaim ,
+.BR k8s-storageclass ,
+.BR k8s-statefulset ,
+.BR k8s-daemonset ,
+.BR k8s-job ,
+.BR k8s-cronjob ,
+and
+.BR k8s-horizontalpodautoscaler .
 .PP
 .B \-c
 checks whether the expected global symlink or wrapper already exists and prints its path when it does.
@@ -187,11 +212,57 @@ is set.
 Select the file template.
 Supported values are
 .BR bash ,
+.BR dockerfile ,
+.BR docker-compose ,
+.BR k8s-namespace ,
+.BR k8s-pod ,
+.BR k8s-deployment ,
+.BR k8s-service ,
+.BR k8s-configmap ,
+.BR k8s-secret ,
+.BR k8s-ingress ,
+.BR k8s-networkpolicy ,
+.BR k8s-serviceaccount ,
+.BR k8s-role ,
+.BR k8s-rolebinding ,
+.BR k8s-clusterrole ,
+.BR k8s-clusterrolebinding ,
+.BR k8s-persistentvolume ,
+.BR k8s-persistentvolumeclaim ,
+.BR k8s-storageclass ,
+.BR k8s-statefulset ,
+.BR k8s-daemonset ,
+.BR k8s-job ,
+.BR k8s-cronjob ,
+.BR k8s-horizontalpodautoscaler ,
 .BR terraform ,
 and
 .BR ansible
 on Linux and macOS, and
 .BR cmd ,
+.BR dockerfile ,
+.BR docker-compose ,
+.BR k8s-namespace ,
+.BR k8s-pod ,
+.BR k8s-deployment ,
+.BR k8s-service ,
+.BR k8s-configmap ,
+.BR k8s-secret ,
+.BR k8s-ingress ,
+.BR k8s-networkpolicy ,
+.BR k8s-serviceaccount ,
+.BR k8s-role ,
+.BR k8s-rolebinding ,
+.BR k8s-clusterrole ,
+.BR k8s-clusterrolebinding ,
+.BR k8s-persistentvolume ,
+.BR k8s-persistentvolumeclaim ,
+.BR k8s-storageclass ,
+.BR k8s-statefulset ,
+.BR k8s-daemonset ,
+.BR k8s-job ,
+.BR k8s-cronjob ,
+.BR k8s-horizontalpodautoscaler ,
 .BR terraform ,
 and
 .BR ansible
@@ -267,6 +338,21 @@ mkscript --template terraform main.tf
 Create an Ansible playbook starter file:
 .EX
 mkscript site.yml --template ansible
+.EE
+.TP
+Create a Dockerfile starter:
+.EX
+mkscript --template dockerfile Dockerfile
+.EE
+.TP
+Create a Docker Compose starter:
+.EX
+mkscript --template docker-compose compose.yaml
+.EE
+.TP
+Create a Kubernetes Deployment starter:
+.EX
+mkscript --template k8s-deployment deployment.yaml
 .EE
 .TP
 Create a strict-mode script:

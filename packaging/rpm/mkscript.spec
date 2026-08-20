@@ -1,7 +1,7 @@
 Name:           mkscript
 Version:        1.5.0
 Release:        1%{?dist}
-Summary:        Create Bash, Terraform, and Ansible starter files safely
+Summary:        Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely
 
 License:        MIT
 URL:            https://github.com/seriousCoding/mkscript
@@ -13,10 +13,10 @@ BuildRequires:  make
 Requires:       bash
 
 %description
-mkscript creates Bash, Terraform, and Ansible starter files with a
-default comment header. Bash remains the default template and uses the
-standard portable Bash interpreter header. The tool refuses to
-overwrite existing files, symbolic links, and directories, can
+mkscript creates Bash, Dockerfile, Docker Compose, Kubernetes,
+Terraform, and Ansible starter files with a default comment header.
+Bash remains the default template on Linux and macOS. The tool refuses
+to overwrite existing files, symbolic links, and directories, can
 optionally add a Bash strict-mode line via -s or --strict, and can
 create, check, or remove Bash-specific global shortcuts later. The
 -f mode can either list matching files under the current tree or look
