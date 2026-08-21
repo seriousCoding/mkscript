@@ -43,8 +43,12 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
-* Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.0-1
-- Add native Windows support and Windows package-manager automation
+* Fri Aug 21 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.0-1
+- Add native Windows support with managed .cmd wrappers
+- Add Windows package-manager automation and release ZIP packaging
+- Add Dockerfile, Docker Compose, and built-in Kubernetes starters
+- Fix automated release version selection on main
+- Expand docs, package metadata, and smoke tests for the new templates
 
 * Wed Aug 12 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.4.4-1
 - Simplify global linking workflow

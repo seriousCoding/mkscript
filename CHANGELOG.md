@@ -2,28 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
-
-### Added
-
-- Add `dockerfile` and `docker-compose` starter templates on Linux, macOS, and Windows.
-- Add built-in Kubernetes starter templates for namespace, workload, service, RBAC, storage, and autoscaling manifests across Unix and Windows.
-
-### Changed
-
-- Expand repository documentation, package metadata, and smoke tests to reflect the broader template catalog.
-
-## [1.5.0] - 2026-08-12
+## [1.5.0] - 2026-08-21
 
 ### Added
 
 - Add the native Windows PowerShell implementation with `.cmd` generation and managed global wrappers.
 - Add Windows CI, installer/uninstaller commands, release ZIP packaging, and a standalone executable launcher.
 - Add a checksum-verifying direct installer plus WinGet and Chocolatey package generation and publishing automation.
+- Add `dockerfile` and `docker-compose` starter templates on Linux, macOS, and Windows.
+- Add built-in Kubernetes starter templates for namespace, workload, service, RBAC, storage, and autoscaling manifests across Unix and Windows.
 
 ### Changed
 
 - Document Windows installation, command lookup, global wrapper management, and package publishing.
+- Expand repository documentation, package metadata, and smoke tests to reflect the broader template catalog.
+
+### Fixed
+
+- Fix release version selection so the automated publish flow can resume correctly from `main`.
 
 ## [1.4.4] - 2026-08-12
 

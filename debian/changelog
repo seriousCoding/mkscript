@@ -1,8 +1,12 @@
 mkscript (1.5.0-1) unstable; urgency=medium
 
-  * Add native Windows support and Windows package-manager automation
+  * Add native Windows support with .cmd generation and managed wrappers.
+  * Add Windows package-manager automation plus release ZIP packaging.
+  * Add Dockerfile, Docker Compose, and built-in Kubernetes starters.
+  * Fix automated release version selection on main.
+  * Expand docs, package metadata, and smoke tests for the new templates.
 
- -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Wed, 12 Aug 2026 09:11:10 +0000
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Fri, 21 Aug 2026 22:13:21 +0000
 
 mkscript (1.4.4-1) unstable; urgency=medium
 
