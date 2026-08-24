@@ -50,8 +50,10 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $case.Path)) { throw "Windows template creation failed: $($case.Template)" }
         if (-not (Select-String -Quiet -LiteralPath $case.Path -Pattern $case.Needle -SimpleMatch)) { throw "Windows template content failed: $($case.Template)" }
     }
-    $bashError = & $command -t bash nope 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
+    # A child PowerShell process preserves the CLI's exit code for this rejection check.
+    $bashError = & powershell.exe -NoProfile -File $command -t bash nope 2>&1 | Out-String
+    $bashExitCode = $LASTEXITCODE
+    if ($bashExitCode -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
     & $command -g tool
     if (-not (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapper creation failed' }
     & $command -c tool
