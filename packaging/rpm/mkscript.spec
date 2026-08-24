@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.5.1
+Version:        1.5.2
 Release:        1%{?dist}
 Summary:        Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,9 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Mon Aug 24 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.2-1
+- Improve global script moves
+
 * Mon Aug 24 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.1-1
 - Fix automated release version tag
 - Fix RPM package description lint

@@ -1,3 +1,9 @@
+mkscript (1.5.2-1) unstable; urgency=medium
+
+  * Improve global script moves
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 24 Aug 2026 21:54:34 +0000
+
 mkscript (1.5.1-1) unstable; urgency=medium
 
   * Fix automated release version tag
