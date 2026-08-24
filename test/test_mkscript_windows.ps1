@@ -51,8 +51,8 @@ try {
         if (-not (Select-String -Quiet -LiteralPath $case.Path -Pattern $case.Needle -SimpleMatch)) { throw "Windows template content failed: $($case.Template)" }
     }
     $bashErrorPath = Join-Path $sandbox 'bash-template-error.txt'
-    & powershell.exe -NoProfile -File $command -t bash nope 2> $bashErrorPath
-    $bashExitCode = $LASTEXITCODE
+    $bashProcess = Start-Process -FilePath powershell.exe -ArgumentList @('-NoProfile', '-File', $command, '-t', 'bash', 'nope') -RedirectStandardError $bashErrorPath -PassThru -Wait
+    $bashExitCode = $bashProcess.ExitCode
     $bashError = Get-Content -LiteralPath $bashErrorPath -Raw
     if ($bashExitCode -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
     & $command -g tool
