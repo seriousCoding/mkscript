@@ -15,7 +15,7 @@ Requires:       bash
 %description
 mkscript creates Bash, Dockerfile, Docker Compose, Kubernetes,
 Terraform, and Ansible starter files with a default comment header.
-Bash remains the default template on Linux and macOS. The tool refuses
+Bash remains the default template on Linux and Mac OS. The tool refuses
 to overwrite existing files, symbolic links, and directories, can
 optionally add a Bash strict-mode line via -s or --strict, and can
 create, check, or remove Bash-specific global shortcuts later. The
