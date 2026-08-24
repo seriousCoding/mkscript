@@ -118,8 +118,9 @@ jobs:
           printf '%s is already published from another commit; creating the next patch release.\n' "$current_tag"
           ./scripts/bump-version.sh --notes-file release-notes.txt
           ./scripts/release-vars.sh --github-env >> "$GITHUB_ENV"
+          release_tag="v$(tr -d '\r\n' < VERSION)"
           git add VERSION CHANGELOG.md debian/changelog packaging/rpm/mkscript.spec mkscript.1
-          git commit -m "chore(release): $MKSCRIPT_TAG"
+          git commit -m "chore(release): $release_tag"
           git push origin HEAD:main
 
       - name: Check out release commit

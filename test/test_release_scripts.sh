@@ -96,4 +96,8 @@ assert_contains "$spec_head" '- Add automated patch release commits on successfu
 manpage_head=$(sed -n '1p' "$fixture_root/mkscript.1")
 assert_contains "$manpage_head" "\"mkscript $expected_version\"" 'mkscript.1 should update the rendered version'
 
+tag_workflow=$(cat "$repo_root/.github/workflows/tag-from-version.yml")
+assert_contains "$tag_workflow" "release_tag=\"v\$(tr -d '\\r\\n' < VERSION)\"" 'release workflow should derive the bumped tag in the current shell'
+assert_contains "$tag_workflow" "git commit -m \"chore(release): \$release_tag\"" 'release workflow should commit using the derived bumped tag'
+
 printf 'Release script tests passed.\n'
