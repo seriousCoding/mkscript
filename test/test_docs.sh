@@ -28,7 +28,7 @@ assert_file_contains "$repo_root/README.md" "$readme_quote_note" 'README should 
 assert_file_contains "$repo_root/README.md" "$readme_lookup_columns" 'README should document the full lookup output columns'
 assert_file_contains "$repo_root/README.md" 'mkscript --template dockerfile Dockerfile' 'README should include a Dockerfile template example'
 assert_file_contains "$repo_root/README.md" 'mkscript --template k8s-deployment deployment.yaml' 'README should include a Kubernetes template example'
-assert_file_contains "$repo_root/README.md" 'It does not support `--template bash`.' 'README should document the Windows bash-template restriction'
+assert_file_contains "$repo_root/README.md" "It does not support \`--template bash\`." 'README should document the Windows bash-template restriction'
 assert_file_contains "$repo_root/INSTALL.md" 'mkscript --template docker-compose compose.yaml' 'INSTALL should include a Docker Compose example'
 assert_file_contains "$repo_root/INSTALL.md" 'mkscript --template k8s-deployment deployment.yaml' 'INSTALL should include a Kubernetes example'
 assert_file_contains "$repo_root/mkscript.1" 'quoted shell-style glob patterns such as' 'man page should introduce quoted glob lookup'

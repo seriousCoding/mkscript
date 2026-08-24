@@ -22,7 +22,7 @@ try {
     if (-not (Select-String -Quiet -LiteralPath site.yml -Pattern 'hosts: all')) { throw 'ansible template failed' }
     $additionalTemplates = @(
         @{ Template = 'dockerfile'; Path = 'Dockerfile'; Needle = 'FROM alpine:3.22' }
-        @{ Template = 'docker-compose'; Path = 'compose.yaml'; Needle = 'services:' }
+        @{ Template = 'docker-compose'; Path = 'compose.yaml'; Needle = '  compose:' }
         @{ Template = 'k8s-namespace'; Path = 'namespace.yaml'; Needle = 'kind: Namespace' }
         @{ Template = 'k8s-pod'; Path = 'pod.yaml'; Needle = 'kind: Pod' }
         @{ Template = 'k8s-deployment'; Path = 'deployment.yaml'; Needle = 'kind: Deployment' }

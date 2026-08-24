@@ -142,7 +142,7 @@ function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
         'terraform' { $lines = $hashHeader + @('terraform {', '  required_version = ">= 1.0.0"', '}') }
         'ansible' { $lines = $hashHeader + @('---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
         'dockerfile' { $lines = $hashHeader + @('FROM alpine:3.22', 'WORKDIR /app', 'COPY . .', 'CMD ["sh"]') }
-        'docker-compose' { $lines = $hashHeader + @('services:', "  $serviceName:", '    image: nginx:1.29-alpine', '    ports:', '      - "8080:80"') }
+        'docker-compose' { $lines = $hashHeader + @('services:', "  ${serviceName}:", '    image: nginx:1.29-alpine', '    ports:', '      - "8080:80"') }
         'k8s-namespace' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Namespace', 'metadata:', "  name: $resourceName") }
         'k8s-pod' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Pod', 'metadata:', "  name: $resourceName", '  labels:', "    app: $resourceName", 'spec:', '  containers:', "    - name: $resourceName", '      image: registry.k8s.io/pause:3.10') }
         'k8s-deployment' { $lines = $hashHeader + @('apiVersion: apps/v1', 'kind: Deployment', 'metadata:', "  name: $resourceName", 'spec:', '  replicas: 1', '  selector:', '    matchLabels:', "      app: $resourceName", '  template:', '    metadata:', '      labels:', "        app: $resourceName", '    spec:', '      containers:', "        - name: $resourceName", '          image: registry.k8s.io/pause:3.10') }
