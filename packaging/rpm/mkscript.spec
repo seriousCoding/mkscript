@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.5.0
+Version:        1.5.1
 Release:        1%{?dist}
 Summary:        Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,16 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Mon Aug 24 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.1-1
+- Fix automated release version tag
+- Fix RPM package description lint
+- Test Windows launcher rejection as a native process
+- Use process exit status for Windows rejection test
+- Capture Windows CLI rejection stderr in tests
+- Handle expected Windows CLI stderr in tests
+- Preserve Windows CLI rejection exit codes in tests
+- Fix Windows Docker Compose release build
+
 * Fri Aug 21 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.0-1
 - Add native Windows support with managed .cmd wrappers
 - Add Windows package-manager automation and release ZIP packaging

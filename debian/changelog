@@ -1,3 +1,16 @@
+mkscript (1.5.1-1) unstable; urgency=medium
+
+  * Fix automated release version tag
+  * Fix RPM package description lint
+  * Test Windows launcher rejection as a native process
+  * Use process exit status for Windows rejection test
+  * Capture Windows CLI rejection stderr in tests
+  * Handle expected Windows CLI stderr in tests
+  * Preserve Windows CLI rejection exit codes in tests
+  * Fix Windows Docker Compose release build
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Mon, 24 Aug 2026 03:30:38 +0000
+
 mkscript (1.5.0-1) unstable; urgency=medium
 
   * Add native Windows support with .cmd generation and managed wrappers.

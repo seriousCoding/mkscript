@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.1] - 2026-08-24
+
+### Changed
+
+- Fix automated release version tag
+- Fix RPM package description lint
+- Test Windows launcher rejection as a native process
+- Use process exit status for Windows rejection test
+- Capture Windows CLI rejection stderr in tests
+- Handle expected Windows CLI stderr in tests
+- Preserve Windows CLI rejection exit codes in tests
+- Fix Windows Docker Compose release build
+
 ## [1.5.0] - 2026-08-21
 
 ### Added
