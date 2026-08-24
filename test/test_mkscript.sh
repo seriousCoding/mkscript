@@ -1697,7 +1697,7 @@ test_move_mode_preserves_permissions_without_link() {
   assert_status 0 "$RUN_STATUS" 'setup script creation for move mode should succeed'
   chmod 700 test
 
-  run_capture "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  run_capture_with_input $'y\n' "$MKSCRIPT_UNDER_TEST" -mv test deploy
   assert_status 0 "$RUN_STATUS" 'move mode should move an unlinked script successfully'
   assert_contains "$RUN_STDOUT" 'Moved script: test -> deploy' 'move mode should report the source and target paths'
   assert_not_exists test 'move mode should remove the original source path'
@@ -1728,7 +1728,7 @@ test_move_mode_recreates_link_for_renamed_script() {
   new_link=$(expected_global_link_path "$home_dir" "$path_value" deploy)
   new_target=$(cd "$sandbox" && pwd -P)/deploy
 
-  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy
+  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy
   assert_status 0 "$RUN_STATUS" 'move mode should relink a renamed global script'
   assert_contains "$RUN_STDOUT" 'Moved script: test -> deploy' 'move mode should report the renamed move'
   assert_contains "$RUN_STDOUT" "Removed global link: $old_link" 'move mode should report the removed old link'
@@ -1759,7 +1759,7 @@ test_move_mode_updates_link_for_same_basename_in_new_directory() {
   link_path=$(expected_global_link_path "$home_dir" "$path_value" test)
   new_target=$(cd "$sandbox" && pwd -P)/scripts/test
 
-  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test scripts/test
+  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test scripts/test
   assert_status 0 "$RUN_STATUS" 'move mode should support keeping the same basename in a new directory'
   assert_contains "$RUN_STDOUT" "Removed global link: $link_path" 'same-basename move should report the removed old link'
   assert_symlink_target "$link_path" "$new_target" 'same-basename move should recreate the same global link path against the new file location'
@@ -1786,9 +1786,78 @@ test_move_mode_creates_new_link_with_global_flag() {
   new_link=$(expected_global_link_path "$home_dir" "$path_value" deploy)
   new_target=$(cd "$sandbox" && pwd -P)/deploy
 
-  run_capture env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy -g
+  run_capture_with_input $'y\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv test deploy -g
   assert_status 0 "$RUN_STATUS" 'move mode should allow -g to create a new global link'
   assert_symlink_target "$new_link" "$new_target" 'move mode with -g should create the expected new global link'
+  assert_executable deploy 'move mode with -g should make the target executable'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_moves_into_directory_with_global_flag() {
+  local sandbox
+  local home_dir
+  local path_value
+  local link_path
+  local source
+  local target
+
+  sandbox=$(mktemp -d)
+  home_dir="$sandbox/home"
+  path_value=$(default_global_test_path "$home_dir")
+  mkdir -p "$home_dir" "$sandbox/myscripts"
+  cd "$sandbox"
+  printf '#!/usr/bin/env bash\n' > myfile
+  chmod 644 myfile
+  link_path=$(expected_global_link_path "$home_dir" "$path_value" myfile)
+  source=$(cd "$sandbox" && pwd -P)/myfile
+  target=$(cd "$sandbox" && pwd -P)/myscripts/myfile
+
+  run_capture_with_input $'yes\n' env HOME="$home_dir" PATH="$path_value" "$MKSCRIPT_UNDER_TEST" -mv -g myfile myscripts
+  assert_status 0 "$RUN_STATUS" 'move mode should allow an existing directory target'
+  assert_contains "$RUN_STDOUT" "Are you sure you want to move '$source' to '$target'?" 'move confirmation should show fully resolved paths'
+  assert_not_exists myfile 'directory-target move should remove the source path'
+  assert_file_equals myscripts/myfile $'#!/usr/bin/env bash\n' 'directory-target move should retain the source basename and contents'
+  assert_executable myscripts/myfile 'directory-target move with -g should make the target executable'
+  assert_symlink_target "$link_path" "$target" 'directory-target move should create a global link for the retained basename'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_refuses_conflicting_directory_target() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/myscripts"
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" myfile
+  assert_status 0 "$RUN_STATUS" 'setup script creation for directory-target conflict should succeed'
+  printf 'busy\n' > myscripts/myfile
+
+  run_capture "$MKSCRIPT_UNDER_TEST" -mv myfile myscripts
+  assert_status 73 "$RUN_STATUS" 'move mode should reject an existing resolved directory target'
+  assert_contains "$RUN_STDERR" 'refusing to overwrite existing path: myscripts/myfile' 'directory-target conflicts should name the resolved target'
+  assert_template_file_equals myfile bash myfile 0 'directory-target conflicts should leave the source unchanged'
+  assert_file_equals myscripts/myfile $'busy\n' 'directory-target conflicts should not overwrite the destination'
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
+test_move_mode_cancellation_leaves_paths_unchanged() {
+  local sandbox
+  local source
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture "$MKSCRIPT_UNDER_TEST" myfile
+  assert_status 0 "$RUN_STATUS" 'setup script creation for move cancellation should succeed'
+  source=$(cd "$sandbox" && pwd -P)/myfile
+
+  run_capture_with_input $'n\n' "$MKSCRIPT_UNDER_TEST" -mv myfile deploy
+  assert_status 73 "$RUN_STATUS" 'move mode should stop when confirmation is denied'
+  assert_contains "$RUN_STDERR" "move cancelled: $source" 'denied move confirmation should be explained'
+  assert_template_file_equals myfile bash myfile 0 'denied move confirmation should leave the source unchanged'
+  assert_not_exists deploy 'denied move confirmation should not create the target'
   cd "$START_DIR"
   rm -rf "$sandbox"
 }
@@ -2310,6 +2379,9 @@ run_test test_move_mode_preserves_permissions_without_link
 run_test test_move_mode_recreates_link_for_renamed_script
 run_test test_move_mode_updates_link_for_same_basename_in_new_directory
 run_test test_move_mode_creates_new_link_with_global_flag
+run_test test_move_mode_moves_into_directory_with_global_flag
+run_test test_move_mode_refuses_conflicting_directory_target
+run_test test_move_mode_cancellation_leaves_paths_unchanged
 run_test test_move_mode_rejects_missing_source
 run_test test_move_mode_rejects_directory_source
 run_test test_move_mode_rejects_existing_target

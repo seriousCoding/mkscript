@@ -262,7 +262,9 @@ Move an existing script to a new path:
 mkscript -mv test deploy
 ```
 
-If `test` already had a managed global shortcut or wrapper, `mkscript` moves the local file, removes the old shortcut or wrapper, and creates a new one for `deploy`. On Linux and macOS it also preserves the source permission mode.
+`mkscript` asks for confirmation before moving. If the target is an existing directory, it retains the source basename, so `mkscript -mv myfile myscripts` moves `myfile` to `myscripts/myfile`.
+
+If `test` already had a managed global shortcut or wrapper, `mkscript` moves the local file, removes the old shortcut or wrapper, and creates a new one for `deploy`. On Linux and macOS it preserves the source permission mode unless `-g` is supplied; `-mv -g` makes the moved target executable before creating its global shortcut.
 
 Create a new global shortcut or wrapper during the move even when the source was not linked before:
 
@@ -307,7 +309,8 @@ mkscript deployment.yaml --template k8s-deployment
 - Existing-file global mode does not rewrite the local file.
 - Existing-file global mode requires a local path that already exists and is not a directory.
 - Existing-file global mode cannot be combined with `-s`.
-- `-mv ... -g` creates a new global shortcut or wrapper for the move target even when the source was not linked already.
+- `-mv ... -g` creates a new global shortcut or wrapper for the move target even when the source was not linked already. On Linux/macOS it also makes the moved target executable.
+- Every `-mv` operation asks for confirmation and accepts an existing directory target, retaining the source basename inside that directory.
 - On Linux, `mkscript` uses `~/.local/bin` for global shortcuts.
 - On macOS, `mkscript` prefers a personal `*local*/bin` or `~/bin` entry already on `PATH`, then falls back to `~/.local/bin`.
 - On Windows, `mkscript` uses `%LOCALAPPDATA%\mkscript\bin` unless `MKSCRIPT_BIN_DIR` is set.

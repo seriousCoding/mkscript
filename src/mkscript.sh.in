@@ -33,7 +33,7 @@ Options:
                   quoted shell-style glob patterns like 'install-wifi*' are supported
                   quote patterns so your shell does not expand them first
                   and print both the resolved path and its parent directory
-  -mv             move an existing Bash script to a new path
+  -mv             move an existing Bash script to a path or existing directory
   -s, --strict    add "set -euo pipefail" after the shebang
   -g, --global    create a global symlink for a new Bash script or an existing Bash file
   -c              check whether the expected global Bash symlink exists
@@ -1540,6 +1540,50 @@ remove_global_link() {
   printf "Removed link for '%s' from '%s'\n" "$target_name" "$link_path"
 }
 
+confirm_move_action() {
+  local source=$1
+  local target=$2
+  local reply
+
+  printf "Are you sure you want to move '%s' to '%s'? [y/N] " "$source" "$target"
+
+  if ! IFS= read -r reply; then
+    fail_create "move cancelled: $source"
+  fi
+
+  case $reply in
+    [Yy]|[Yy][Ee][Ss])
+      ;;
+    *)
+      fail_create "move cancelled: $source"
+      ;;
+  esac
+}
+
+resolve_move_target() {
+  local source=$1
+  local target=$2
+  local source_base
+
+  if [ ! -d "$target" ]; then
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  source_base=$(base_name "$source")
+  case $target in
+    /)
+      printf '/%s\n' "$source_base"
+      ;;
+    */)
+      printf '%s%s\n' "$target" "$source_base"
+      ;;
+    *)
+      printf '%s/%s\n' "$target" "$source_base"
+      ;;
+  esac
+}
+
 move_script() {
   local source=$1
   local target=$2
@@ -1554,9 +1598,11 @@ move_script() {
   local command_target
 
   validate_move_source "$source"
+  target=$(resolve_move_target "$source" "$target")
   validate_target "$target"
 
   source_absolute=$(absolute_path "$source") || fail_create "failed to resolve absolute path: $source"
+  target_absolute=$(absolute_path "$target") || fail_create "failed to resolve absolute path: $target"
   source_mode=$(permission_mode "$source")
 
   if source_link_path=$(managed_global_link_path "$source" "$source_absolute"); then
@@ -1574,6 +1620,8 @@ move_script() {
     fi
   fi
 
+  confirm_move_action "$source_absolute" "$target_absolute"
+
   if ! mv "$source" "$target"; then
     fail_create "failed to move script: $source -> $target"
   fi
@@ -1584,7 +1632,9 @@ move_script() {
     fail_create "script moved to '$target' but failed to restore permissions"
   fi
 
-  target_absolute=$(absolute_path "$target") || fail_create "script moved to '$target' but failed to resolve the new absolute path"
+  if [ "$recreate_link" -eq 1 ] && ! chmod u+x "$command_target"; then
+    fail_create "script moved to '$target' but failed to make it executable"
+  fi
 
   printf 'Moved script: %s -> %s\n' "$source" "$target"
 

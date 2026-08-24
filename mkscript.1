@@ -184,12 +184,14 @@ On Windows, command lookup uses native Windows command resolution.
 Lookup mode returns the first resolved match for each query.
 .PP
 .B \-mv
-moves an existing local Bash script to a new path on Linux/macOS or an existing local command script to a new path on Windows, and recreates the global shortcut when the source was linked already or when
+moves an existing local Bash script to a new path on Linux/macOS or an existing local command script to a new path on Windows. If the target is an existing directory, the source basename is retained inside that directory. mkscript asks for confirmation before moving and recreates the global shortcut when the source was linked already or when
 .B \-g
 is supplied.
 On Linux and macOS,
 .B \-mv
-also preserves the source file permission mode.
+also preserves the source file permission mode unless
+.B \-g
+is supplied, in which case it makes the moved target executable before creating the global shortcut.
 .PP
 Existing files, symlinks, directories, and managed wrapper paths are never overwritten.
 .PP
@@ -303,7 +305,11 @@ Check whether the expected global symlink or wrapper exists and print its path w
 Remove the expected global symlink or wrapper after confirmation.
 .TP
 .B \-mv
-Move an existing local Bash script on Linux/macOS or an existing local command script on Windows, preserve the permission mode on Linux/macOS, and recreate the global shortcut or wrapper when appropriate.
+Move an existing local Bash script on Linux/macOS or an existing local command script on Windows. An existing directory target receives the source basename. mkscript asks for confirmation before moving, preserves the permission mode on Linux/macOS without
+.BR \-g ,
+and makes the target executable on Linux/macOS with
+.BR \-g .
+It recreates the global shortcut or wrapper when appropriate.
 .TP
 .B \-\-help
 Display usage information and exit successfully.

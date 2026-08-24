@@ -59,8 +59,19 @@ try {
     if (-not (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapper creation failed' }
     & $command -c tool
     if ($LASTEXITCODE -ne 0) { throw 'wrapper check failed' }
-    & $command -mv tool moved
-    if (-not (Test-Path moved.cmd) -or -not (Test-Path "$env:MKSCRIPT_BIN_DIR/moved.cmd") -or (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapped move failed' }
+    $moveConfirmation = Join-Path $sandbox 'move-confirmation.txt'
+    Set-Content -LiteralPath $moveConfirmation -Value 'y' -NoNewline
+    $moveProcess = Start-Process -FilePath $launcher -ArgumentList @('-mv', 'tool', 'moved') -RedirectStandardInput $moveConfirmation -PassThru -Wait
+    if ($moveProcess.ExitCode -ne 0 -or -not (Test-Path moved.cmd) -or -not (Test-Path "$env:MKSCRIPT_BIN_DIR/moved.cmd") -or (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapped move failed' }
+    & $command folder-script
+    New-Item -ItemType Directory scripts | Out-Null
+    Set-Content -LiteralPath $moveConfirmation -Value 'yes' -NoNewline
+    $directoryMoveProcess = Start-Process -FilePath $launcher -ArgumentList @('-mv', '-g', 'folder-script', 'scripts') -RedirectStandardInput $moveConfirmation -PassThru -Wait
+    if ($directoryMoveProcess.ExitCode -ne 0 -or -not (Test-Path scripts/folder-script.cmd) -or -not (Test-Path "$env:MKSCRIPT_BIN_DIR/folder-script.cmd") -or (Test-Path folder-script.cmd)) { throw 'directory target move failed' }
+    & $command cancel-script
+    Set-Content -LiteralPath $moveConfirmation -Value 'n' -NoNewline
+    $cancelMoveProcess = Start-Process -FilePath $launcher -ArgumentList @('-mv', 'cancel-script', 'cancelled') -RedirectStandardInput $moveConfirmation -PassThru -Wait
+    if ($cancelMoveProcess.ExitCode -eq 0 -or -not (Test-Path cancel-script.cmd) -or (Test-Path cancelled.cmd)) { throw 'move cancellation failed' }
     $resolved = & $command -f powershell.exe | Out-String
     if ($LASTEXITCODE -ne 0 -or $resolved -notmatch 'command') { throw 'native command lookup failed' }
 

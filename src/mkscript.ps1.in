@@ -33,7 +33,7 @@ Options:
                            k8s-storageclass, k8s-statefulset, k8s-daemonset,
                            k8s-job, k8s-cronjob, or k8s-horizontalpodautoscaler
   -f, --files              list or look up native Windows files/commands
-  -mv                      move a command script and update its wrapper
+  -mv                      move a command script to a path or existing directory and update its wrapper
   -s, --strict             enable delayed expansion in a generated .cmd file
   -g, --global             create a .cmd wrapper in the user bin directory
   -c                       check whether the expected wrapper exists
@@ -218,12 +218,19 @@ for ($i=0; $i -lt $Arguments.Count; $i++) {
 if ($mode -eq 'files') { Find-Files $paths; exit 0 }
 if ($mode -eq 'move') {
     if ($paths.Count -ne 2 -or $strict -or $template -ne 'cmd') { Stop-Mkscript 'invalid -mv option combination' $UsageError }
-    $source=Resolve-FullPath (Get-CommandTarget $paths[0]); $target=Get-CommandTarget $paths[1]
+    $source=Resolve-FullPath (Get-CommandTarget $paths[0])
+    $target = if (Test-Path -LiteralPath $paths[1] -PathType Container) {
+        Join-Path $paths[1] (Split-Path -Leaf $source)
+    } else {
+        Get-CommandTarget $paths[1]
+    }
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { Stop-Mkscript "cannot move missing path: $($paths[0])" }
     if (Test-Path -LiteralPath $target) { Stop-Mkscript "refusing to overwrite existing path: $target" }
     $oldWrapper=Get-WrapperPath $source; $wasGlobal=((Get-WrapperTarget $oldWrapper) -eq $source)
     $newWrapper=Get-WrapperPath $target
     if (($global -or $wasGlobal) -and $newWrapper -ne $oldWrapper) { Assert-WrapperAvailable $newWrapper }
+    $resolvedTarget=Resolve-FullPath $target
+    if (-not (Confirm "Move '$source' to '$resolvedTarget'?")) { Stop-Mkscript 'move cancelled' }
     Move-Item -LiteralPath $source -Destination $target
     if ($wasGlobal) { Remove-Item -LiteralPath $oldWrapper -Force }
     if ($global -or $wasGlobal) { Write-Wrapper $target -Replace:($newWrapper -eq $oldWrapper) }
