@@ -67,6 +67,8 @@ jobs:
 
       - name: Install Homebrew formula
         if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: '1'
         run: ./scripts/test-homebrew-formula.sh ./build/homebrew/mkscript.rb
 
   package:
