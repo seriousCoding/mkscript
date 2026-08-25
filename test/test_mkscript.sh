@@ -288,6 +288,10 @@ expected_bash_content() {
   if [ "$strict_enabled" -eq 1 ]; then
     printf 'set -euo pipefail\n'
   fi
+  printf '\nusage() {\n'
+  # shellcheck disable=SC2016
+  printf '%s\n' '  printf '\''Usage: %s [options]\n'\'' "${0##*/}"'
+  printf '}\n\nlog() {\n  printf "%%s\\n" "$*" >&2\n}\n\nmain() {\n  # Add application logic here.\n  log "running %s"\n}\n\nmain "$@"\n' "$target_name"
 }
 
 expected_terraform_content() {
@@ -300,7 +304,13 @@ expected_terraform_content() {
   printf '\n'
   printf 'terraform {\n'
   printf '  required_version = ">= 1.0.0"\n'
+  printf '  required_providers {\n'
+  printf '    # Add providers required by this configuration.\n'
+  printf '  }\n'
   printf '}\n'
+  printf '\nvariable "name" {\n  description = "Name used by resources in this configuration."\n  type        = string\n}\n'
+  printf '\nlocals {\n  common_tags = {\n    managed_by = "terraform"\n  }\n}\n'
+  printf '\noutput "name" {\n  description = "Configured resource name."\n  value       = var.name\n}\n'
 }
 
 expected_ansible_content() {
@@ -314,8 +324,11 @@ expected_ansible_content() {
   printf -- '---\n'
   printf -- '- name: %s\n' "$target_name"
   printf '  hosts: all\n'
-  printf '  gather_facts: false\n'
-  printf '  tasks: []\n'
+  printf '  gather_facts: true\n'
+  printf '  vars: {}\n'
+  printf '  pre_tasks:\n    - name: Validate managed hosts\n      ansible.builtin.assert:\n        that: ansible_facts.os_family is defined\n'
+  printf '  tasks:\n    - name: Add application tasks\n      ansible.builtin.debug:\n        msg: "Replace this task with application configuration."\n      changed_when: false\n'
+  printf '  handlers: []\n  post_tasks: []\n'
 }
 
 template_stem_name_for_test() {
@@ -367,9 +380,12 @@ expected_dockerfile_content() {
   printf '# Creator: %s\n' "$(current_creator_name)"
   printf '\n'
   printf 'FROM alpine:3.22\n'
+  printf 'RUN addgroup -S app && adduser -S app -G app\n'
   printf 'WORKDIR /app\n'
-  printf 'COPY . .\n'
-  printf 'CMD ["sh"]\n'
+  printf 'COPY --chown=app:app . .\n'
+  printf 'USER app\nEXPOSE 8080\n'
+  printf 'HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/ || exit 1\n'
+  printf 'CMD ["sh", "-c", "echo Replace this command with your application; sleep infinity"]\n'
 }
 
 expected_docker_compose_content() {
@@ -386,8 +402,15 @@ expected_docker_compose_content() {
   printf 'services:\n'
   printf '  %s:\n' "$service_name"
   printf '    image: nginx:1.29-alpine\n'
+  printf '    restart: unless-stopped\n'
   printf '    ports:\n'
   printf '      - "8080:80"\n'
+  printf '    environment:\n      NGINX_ENTRYPOINT_QUIET_LOGS: "1"\n'
+  printf '    volumes:\n      - %s-data:/usr/share/nginx/html\n' "$service_name"
+  printf '    networks:\n      - %s-network\n' "$service_name"
+  printf '    healthcheck:\n      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]\n      interval: 30s\n      timeout: 5s\n      retries: 3\n'
+  printf '    deploy:\n      resources:\n        limits:\n          cpus: "0.50"\n          memory: 256M\n'
+  printf 'networks:\n  %s-network:\n    driver: bridge\nvolumes:\n  %s-data:\n' "$service_name" "$service_name"
 }
 
 expected_k8s_template_content() {
@@ -901,6 +924,35 @@ test_plain_script_creation() {
   rm -rf "$sandbox"
 }
 
+test_template_target_defaults_and_helm() {
+  local sandbox
+
+  sandbox=$(mktemp -d)
+  cd "$sandbox"
+  run_capture_with_input $'y\n' "$MKSCRIPT_UNDER_TEST" -t docker
+  assert_status 0 "$RUN_STATUS" 'docker default target should be confirmed and created'
+  assert_contains "$RUN_STDOUT" 'To provide a filename, use: mkscript -t docker Dockerfile' 'docker default confirmation should preserve the alias'
+  assert_contains "$(cat Dockerfile)" 'HEALTHCHECK' 'Dockerfile should include an operational health check'
+  run_capture "$MKSCRIPT_UNDER_TEST" -t docker-compose app
+  assert_status 0 "$RUN_STATUS" 'docker-compose should add a missing extension'
+  assert_contains "$(cat app.yml)" 'networks:' 'Compose should include a network declaration'
+  assert_contains "$(cat app.yml)" 'volumes:' 'Compose should include a volume declaration'
+  run_capture_with_input $'n\n' "$MKSCRIPT_UNDER_TEST" -t helm
+  assert_status 73 "$RUN_STATUS" 'declined Helm default should fail without creating a chart'
+  assert_not_exists chart 'declined Helm default should not create a chart directory'
+  run_capture "$MKSCRIPT_UNDER_TEST" -t helm service-chart
+  assert_status 0 "$RUN_STATUS" 'Helm chart creation should succeed'
+  assert_contains "$(cat service-chart/Chart.yaml)" 'apiVersion: v2' 'Helm Chart.yaml should use v2'
+  assert_contains "$(cat service-chart/values.yaml)" 'autoscaling:' 'Helm values should contain operational options'
+  assert_not_exists service-chart/missing 'chart assertion should not create extra paths'
+  if command -v helm >/dev/null 2>&1; then
+    helm lint service-chart >/dev/null
+    helm template service-chart service-chart >/dev/null
+  fi
+  cd "$START_DIR"
+  rm -rf "$sandbox"
+}
+
 test_short_strict_mode() {
   local sandbox
 
@@ -1144,11 +1196,11 @@ test_help_output() {
   assert_contains "$RUN_STDOUT" "quoted shell-style glob patterns like 'install-wifi*' are supported" 'help should document quoted glob lookup support'
   assert_contains "$RUN_STDOUT" 'quote patterns so your shell does not expand them first' 'help should explain why glob queries should be quoted'
   assert_contains "$RUN_STDOUT" '-mv' 'help should document move mode'
-  assert_contains "$RUN_STDOUT" 'use bash, terraform, ansible, dockerfile, docker-compose,' 'help should list the expanded template families'
+  assert_contains "$RUN_STDOUT" 'use bash, terraform, ansible, dockerfile (or docker), docker-compose, helm,' 'help should list the expanded template families'
   assert_contains "$RUN_STDOUT" 'k8s-namespace, k8s-pod, k8s-deployment, k8s-service,' 'help should list Kubernetes starter templates'
   assert_contains "$RUN_STDOUT" '-s, --strict' 'help should document strict mode'
   assert_contains "$RUN_STDOUT" '-g, --global' 'help should document global mode'
-  assert_contains "$RUN_STDOUT" 'create a global symlink for a new Bash script or an existing Bash file' 'help should explain dual-purpose global mode'
+  assert_contains "$RUN_STDOUT" 'create a global symlink for a new or existing Bash file only' 'help should explain dual-purpose global mode'
   assert_contains "$RUN_STDOUT" '-c' 'help should document link-check mode'
   assert_contains "$RUN_STDOUT" '-r' 'help should document link-removal mode'
 }
@@ -1174,8 +1226,9 @@ test_overwrite_refusal() {
 
 test_missing_output_path() {
   run_capture "$MKSCRIPT_UNDER_TEST"
-  assert_status 64 "$RUN_STATUS" 'missing output path should be a usage error'
-  assert_contains "$RUN_STDERR" 'missing output path' 'missing output path should be explained'
+  assert_status 73 "$RUN_STATUS" 'unconfirmed default output should stop creation'
+  assert_contains "$RUN_STDOUT" "No output filename was supplied. Create 'script.sh'?" 'default output should be explained'
+  assert_contains "$RUN_STDERR" 'creation cancelled' 'unconfirmed default output should be cancelled'
 }
 
 test_invalid_option() {
@@ -2327,6 +2380,7 @@ run_test() {
 }
 
 run_test test_plain_script_creation
+run_test test_template_target_defaults_and_helm
 run_test test_short_strict_mode
 run_test test_long_strict_mode_with_absolute_path
 run_test test_terraform_template_creation

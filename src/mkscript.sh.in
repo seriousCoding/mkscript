@@ -14,12 +14,12 @@ Usage:
   mkscript -f|--files [DEPTH]
   mkscript -f|--files NAME [NAME ...]
 
-Create a new file from a Bash, Docker, Kubernetes, Terraform, or Ansible template.
+Create a new file or Helm chart from a Bash, Docker, Kubernetes, Terraform, or Ansible template.
 Global link management applies to Bash templates only.
 
 Options:
   -t, --template TEMPLATE
-                  use bash, terraform, ansible, dockerfile, docker-compose,
+                  use bash, terraform, ansible, dockerfile (or docker), docker-compose, helm,
                   k8s-namespace, k8s-pod, k8s-deployment, k8s-service,
                   k8s-configmap, k8s-secret, k8s-ingress, k8s-networkpolicy,
                   k8s-serviceaccount, k8s-role, k8s-rolebinding,
@@ -33,13 +33,31 @@ Options:
                   quoted shell-style glob patterns like 'install-wifi*' are supported
                   quote patterns so your shell does not expand them first
                   and print both the resolved path and its parent directory
-  -mv             move an existing Bash script to a path or existing directory
-  -s, --strict    add "set -euo pipefail" after the shebang
-  -g, --global    create a global symlink for a new Bash script or an existing Bash file
+  -mv             move an existing Bash script to a path or existing directory;
+                  confirm the resolved source and destination before moving
+  -s, --strict    add "set -euo pipefail" to a new Bash script only
+  -g, --global    create a global symlink for a new or existing Bash file only
   -c              check whether the expected global Bash symlink exists
   -r              remove the expected global Bash symlink after confirmation
       --help      display this help and exit
       --version   output version information and exit
+
+Target rules:
+  An omitted target prompts for the template default: script.sh, main.tf,
+  site.yml, Dockerfile, docker-compose.yml, a k8s resource .yaml, or chart.
+  Explicit extensionless terraform, ansible, docker-compose, k8s-*, and
+  explicitly selected bash targets receive .tf, .yml, .yaml, or .sh.
+  docker is an alias for dockerfile. helm creates a chart directory.
+
+Flag rules:
+  -s, -g, -c, -r, and -mv apply only to Bash. -mv accepts SOURCE TARGET;
+  if TARGET is a directory, the source filename is retained. -f cannot be
+  combined with template, move, global, strict, check, or remove modes.
+
+Examples:
+  mkscript deploy              mkscript -t docker
+  mkscript -t terraform infra  mkscript -t helm service-chart
+  mkscript -mv -g deploy scripts  mkscript -f 'install-*'
 EOF
 }
 
@@ -116,7 +134,7 @@ name_matches_query() {
 
 validate_template() {
   case $1 in
-    bash|terraform|ansible|dockerfile|docker-compose|\
+    bash|terraform|ansible|dockerfile|docker-compose|helm|\
     k8s-namespace|k8s-pod|k8s-deployment|k8s-service|\
     k8s-configmap|k8s-secret|k8s-ingress|k8s-networkpolicy|\
     k8s-serviceaccount|k8s-role|k8s-rolebinding|\
@@ -126,8 +144,77 @@ validate_template() {
     k8s-job|k8s-cronjob|k8s-horizontalpodautoscaler)
       ;;
     *)
-      fail_usage "unsupported template: $1 (expected bash, terraform, ansible, dockerfile, docker-compose, or a supported k8s-* template)"
+      fail_usage "unsupported template: $1 (expected bash, terraform, ansible, dockerfile, docker-compose, helm, or a supported k8s-* template)"
       ;;
+  esac
+}
+
+normalize_template() {
+  case $1 in
+    docker)
+      printf 'dockerfile\n'
+      ;;
+    *)
+      printf '%s\n' "$1"
+      ;;
+  esac
+}
+
+path_has_extension() {
+  case "$(base_name "$1")" in
+    *.*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+default_target_for_template() {
+  case $1 in
+    bash) printf 'script.sh\n' ;;
+    terraform) printf 'main.tf\n' ;;
+    ansible) printf 'site.yml\n' ;;
+    dockerfile) printf 'Dockerfile\n' ;;
+    docker-compose) printf 'docker-compose.yml\n' ;;
+    helm) printf 'chart\n' ;;
+    k8s-*) printf '%s.yaml\n' "${1#k8s-}" ;;
+  esac
+}
+
+resolve_template_target() {
+  local target=$1
+  local template=$2
+
+  if path_has_extension "$target" || [ "$template" = 'dockerfile' ] || [ "$template" = 'helm' ]; then
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  case $template in
+    bash) printf '%s.sh\n' "$target" ;;
+    terraform) printf '%s.tf\n' "$target" ;;
+    ansible|docker-compose) printf '%s.yml\n' "$target" ;;
+    k8s-*) printf '%s.yaml\n' "$target" ;;
+  esac
+}
+
+confirm_default_target() {
+  local selected_template=$1
+  local target=$2
+  local kind='filename'
+  local reply
+
+  if [ "$(normalize_template "$selected_template")" = 'helm' ]; then
+    kind='chart directory'
+  fi
+  printf "No output %s was supplied. Create '%s'? [y/N]\n" "$kind" "$target"
+  printf 'To provide a filename, use: %s -t %s %s\n' "$MKSCRIPT_NAME" "$selected_template" "$target"
+  if ! IFS= read -r reply; then
+    fail_create 'creation cancelled'
+  fi
+  case $reply in
+    [Yy]|[Yy][Ee][Ss]) ;;
+    *) fail_create 'creation cancelled' ;;
   esac
 }
 
@@ -401,6 +488,24 @@ validate_target() {
   fi
 }
 
+validate_chart_target() {
+  local target=$1
+  local parent
+  local base
+
+  parent=$(parent_dir "$target")
+  base=$(base_name "$target")
+  if [ -z "$base" ] || [ "$base" = '.' ] || [ "$base" = '..' ]; then
+    fail_create "output path must name a chart directory: $target"
+  fi
+  if [ ! -d "$parent" ]; then
+    fail_create "parent directory does not exist: $parent"
+  fi
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    fail_create "refusing to overwrite existing path: $target"
+  fi
+}
+
 validate_global_link() {
   local link_path=$1
   local global_dir
@@ -531,6 +636,10 @@ write_template() {
         if [ "$strict_enabled" -eq 1 ]; then
           printf 'set -euo pipefail\n'
         fi
+        printf '\nusage() {\n'
+        # shellcheck disable=SC2016
+        printf '%s\n' '  printf '\''Usage: %s [options]\n'\'' "${0##*/}"'
+        printf '}\n\nlog() {\n  printf "%%s\\n" "$*" >&2\n}\n\nmain() {\n  # Add application logic here.\n  log "running %s"\n}\n\nmain "$@"\n' "$target_name"
       } > "$destination"
       ;;
     terraform)
@@ -539,7 +648,13 @@ write_template() {
         printf '\n'
         printf 'terraform {\n'
         printf '  required_version = ">= 1.0.0"\n'
+        printf '  required_providers {\n'
+        printf '    # Add providers required by this configuration.\n'
+        printf '  }\n'
         printf '}\n'
+        printf '\nvariable "name" {\n  description = "Name used by resources in this configuration."\n  type        = string\n}\n'
+        printf '\nlocals {\n  common_tags = {\n    managed_by = "terraform"\n  }\n}\n'
+        printf '\noutput "name" {\n  description = "Configured resource name."\n  value       = var.name\n}\n'
       } > "$destination"
       ;;
     ansible)
@@ -549,8 +664,19 @@ write_template() {
         printf -- '---\n'
         printf -- '- name: %s\n' "$target_name"
         printf '  hosts: all\n'
-        printf '  gather_facts: false\n'
-        printf '  tasks: []\n'
+        printf '  gather_facts: true\n'
+        printf '  vars: {}\n'
+        printf '  pre_tasks:\n'
+        printf '    - name: Validate managed hosts\n'
+        printf '      ansible.builtin.assert:\n'
+        printf '        that: ansible_facts.os_family is defined\n'
+        printf '  tasks:\n'
+        printf '    - name: Add application tasks\n'
+        printf '      ansible.builtin.debug:\n'
+        printf '        msg: "Replace this task with application configuration."\n'
+        printf '      changed_when: false\n'
+        printf '  handlers: []\n'
+        printf '  post_tasks: []\n'
       } > "$destination"
       ;;
     dockerfile)
@@ -558,9 +684,13 @@ write_template() {
         write_header "$target_name" dockerfile
         printf '\n'
         printf 'FROM alpine:3.22\n'
+        printf 'RUN addgroup -S app && adduser -S app -G app\n'
         printf 'WORKDIR /app\n'
-        printf 'COPY . .\n'
-        printf 'CMD ["sh"]\n'
+        printf 'COPY --chown=app:app . .\n'
+        printf 'USER app\n'
+        printf 'EXPOSE 8080\n'
+        printf 'HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/ || exit 1\n'
+        printf 'CMD ["sh", "-c", "echo Replace this command with your application; sleep infinity"]\n'
       } > "$destination"
       ;;
     docker-compose)
@@ -570,8 +700,30 @@ write_template() {
         printf 'services:\n'
         printf '  %s:\n' "$service_name"
         printf '    image: nginx:1.29-alpine\n'
+        printf '    restart: unless-stopped\n'
         printf '    ports:\n'
         printf '      - "8080:80"\n'
+        printf '    environment:\n'
+        printf '      NGINX_ENTRYPOINT_QUIET_LOGS: "1"\n'
+        printf '    volumes:\n'
+        printf '      - %s-data:/usr/share/nginx/html\n' "$service_name"
+        printf '    networks:\n'
+        printf '      - %s-network\n' "$service_name"
+        printf '    healthcheck:\n'
+        printf '      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]\n'
+        printf '      interval: 30s\n'
+        printf '      timeout: 5s\n'
+        printf '      retries: 3\n'
+        printf '    deploy:\n'
+        printf '      resources:\n'
+        printf '        limits:\n'
+        printf '          cpus: "0.50"\n'
+        printf '          memory: 256M\n'
+        printf 'networks:\n'
+        printf '  %s-network:\n' "$service_name"
+        printf '    driver: bridge\n'
+        printf 'volumes:\n'
+        printf '  %s-data:\n' "$service_name"
       } > "$destination"
       ;;
     k8s-namespace)
@@ -939,6 +1091,196 @@ template_mode() {
       printf '644\n'
       ;;
   esac
+}
+
+write_helm_chart() {
+  local target=$1 chart_name safe_name
+  chart_name=$(base_name "$target")
+  safe_name=$(normalize_manifest_name "$chart_name" "$target")
+  mkdir -p "$target/templates/tests" || return 1
+  printf 'apiVersion: v2\nname: %s\ndescription: A complete Helm chart generated by mkscript.\ntype: application\nversion: 0.1.0\nappVersion: "1.0.0"\n' "$safe_name" > "$target/Chart.yaml"
+  cat > "$target/values.yaml" <<'EOF'
+replicaCount: 1
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.29-alpine"
+serviceAccount:
+  create: true
+  annotations: {}
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+resources:
+  limits: { cpu: 500m, memory: 256Mi }
+  requests: { cpu: 100m, memory: 128Mi }
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+persistence:
+  enabled: false
+  accessModes: [ReadWriteOnce]
+  size: 1Gi
+  storageClass: ""
+networkPolicy:
+  enabled: false
+config: {}
+secretRefs: []
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+nodeSelector: {}
+tolerations: []
+affinity: {}
+EOF
+  printf '.DS_Store\n.git/\n*.tgz\n' > "$target/.helmignore"
+  cat > "$target/templates/_helpers.tpl" <<'EOF'
+{{- define "chart.name" -}}{{ default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}{{- end }}
+{{- define "chart.fullname" -}}{{ default (include "chart.name" .) .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}{{- end }}
+{{- define "chart.labels" -}}
+app.kubernetes.io/name: {{ include "chart.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+{{- end }}
+EOF
+  cat > "$target/templates/deployment.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels: {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ include "chart.name" . }}, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: {{- include "chart.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "chart.fullname" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ name: http, containerPort: {{ .Values.service.targetPort }} }]
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+EOF
+  cat > "$target/templates/service.yaml" <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels: {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector: { app.kubernetes.io/name: {{ include "chart.name" . }}, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: {{ .Values.service.port }}, targetPort: http }]
+EOF
+  cat > "$target/templates/serviceaccount.yaml" <<'EOF'
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "chart.fullname" . }}
+  annotations: {{- toYaml .Values.serviceAccount.annotations | nindent 4 }}
+{{- end }}
+EOF
+  cat > "$target/templates/ingress.yaml" <<'EOF'
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "chart.fullname" . }}
+  annotations: {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules: {{- toYaml .Values.ingress.hosts | nindent 4 }}
+{{- end }}
+EOF
+  cat > "$target/templates/hpa.yaml" <<'EOF'
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: {{ include "chart.fullname" . }} }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "chart.fullname" . }} }
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }} } } }]
+{{- end }}
+EOF
+  cat > "$target/templates/networkpolicy.yaml" <<'EOF'
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ include "chart.fullname" . }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: {{ include "chart.name" . }} } }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ namespaceSelector: {} }] }]
+{{- end }}
+EOF
+  cat > "$target/templates/persistentvolumeclaim.yaml" <<'EOF'
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: {{ include "chart.fullname" . }} }
+spec:
+  accessModes: {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  resources: { requests: { storage: {{ .Values.persistence.size }} } }
+  {{- with .Values.persistence.storageClass }}storageClassName: {{ . }}{{- end }}
+{{- end }}
+EOF
+  cat > "$target/templates/configmap.yaml" <<'EOF'
+{{- if .Values.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: {{ include "chart.fullname" . }} }
+data: {{- toYaml .Values.config | nindent 2 }}
+{{- end }}
+EOF
+  cat > "$target/templates/secret.yaml" <<'EOF'
+{{- range .Values.secretRefs }}
+apiVersion: v1
+kind: Secret
+metadata: { name: {{ .name }} }
+type: Opaque
+stringData: {{- toYaml .data | nindent 2 }}
+---
+{{- end }}
+EOF
+  cat > "$target/templates/NOTES.txt" <<'EOF'
+Use kubectl port-forward service/{{ include "chart.fullname" . }} 8080:{{ .Values.service.port }} to access the service locally.
+EOF
+  cat > "$target/templates/tests/test-connection.yaml" <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "chart.fullname" . }}-test-connection"
+  annotations: { "helm.sh/hook": test }
+spec:
+  restartPolicy: Never
+  containers:
+    - name: wget
+      image: busybox:1.36
+      command: ['wget']
+      args: ['{{ include "chart.fullname" . }}:{{ .Values.service.port }}']
+EOF
 }
 
 permission_mode() {
@@ -1386,6 +1728,14 @@ create_target() {
   local command_target
   local mode
 
+  if [ "$template" = 'helm' ]; then
+    if ! write_helm_chart "$target"; then
+      rm -rf "$target"
+      fail_create "failed to write Helm chart: $target"
+    fi
+    return 0
+  fi
+
   command_target=$(safe_command_path "$target")
   mode=$(template_mode "$template")
 
@@ -1671,6 +2021,7 @@ main() {
   local move_only=0
   local literal_args=0
   local template='bash'
+  local selected_template='bash'
   local template_specified=0
   local positional_count=0
   local first_path=''
@@ -1690,6 +2041,7 @@ main() {
           fi
           template_specified=1
           template=$2
+          selected_template=$2
           shift 2
           continue
           ;;
@@ -1699,6 +2051,7 @@ main() {
             fail_usage "missing value for --template"
           fi
           template_specified=1
+          selected_template=$template
           shift
           continue
           ;;
@@ -1756,7 +2109,8 @@ main() {
     shift
   done
 
-  validate_template "$template"
+  validate_template "$(normalize_template "$template")"
+  template=$(normalize_template "$template")
 
   if [ "$files_only" -eq 1 ]; then
     if [ ! -t 0 ]; then
@@ -1810,15 +2164,19 @@ main() {
     target=$second_path
   else
     if [ "$positional_count" -eq 0 ]; then
-      fail_usage "missing output path"
-    fi
-
-    if [ "$positional_count" -ne 1 ]; then
+      target=$(default_target_for_template "$template")
+      confirm_default_target "$selected_template" "$target"
+    elif [ "$positional_count" -eq 1 ]; then
+      first_path=${positional_args[0]}
+      # Preserve extensionless Unix script names for the default Bash workflow.
+      if [ "$template" = 'bash' ] && [ "$template_specified" -eq 0 ]; then
+        target=$first_path
+      else
+        target=$(resolve_template_target "$first_path" "$template")
+      fi
+    else
       fail_usage "expected exactly one output path"
     fi
-
-    first_path=${positional_args[0]}
-    target=$first_path
   fi
 
   if [ "$check_only" -eq 1 ] && [ "$remove_only" -eq 1 ]; then
@@ -1933,7 +2291,11 @@ main() {
     exit 0
   fi
 
-  validate_target "$target"
+  if [ "$template" = 'helm' ]; then
+    validate_chart_target "$target"
+  else
+    validate_target "$target"
+  fi
 
   if [ "$global_enabled" -eq 1 ]; then
     link_path=$(global_link_path "$target")
@@ -1952,6 +2314,8 @@ main() {
 
   if [ "$template" = 'bash' ]; then
     printf 'Created script: %s\n' "$target"
+  elif [ "$template" = 'helm' ]; then
+    printf 'Created Helm chart: %s\n' "$target"
   else
     printf 'Created file: %s\n' "$target"
   fi

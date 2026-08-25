@@ -29,9 +29,19 @@ mkscript \- create starter files safely across Linux, macOS, and Windows
 .I target
 .SH DESCRIPTION
 .B mkscript
-creates a new file at the requested path from a platform-native script template or from a Docker, Kubernetes, Terraform, or Ansible starter template.
+creates a new file at the requested path from a platform-native script template or from a Docker, Kubernetes, Terraform, Ansible, or Helm starter template.
 On Linux and macOS, the default template is Bash.
 On native Windows, the PowerShell implementation creates a .cmd file by default.
+.PP
+When no creation path is supplied, mkscript asks for confirmation before creating the template's standard target and prints the explicit command form. Defaults are script.sh on Unix, script.cmd on Windows, main.tf, site.yml, Dockerfile, docker-compose.yml, a resource-specific Kubernetes .yaml file, and the chart Helm directory. Explicit extensionless Terraform, Ansible, Compose, Kubernetes, explicitly selected Bash, and CMD targets receive their normal extension. Existing default Unix Bash commands such as mkscript deploy retain the supplied filename for compatibility.
+.PP
+The
+.BR docker
+template name is an alias for
+.BR dockerfile .
+The
+.BR helm
+template creates a complete chart directory containing Chart.yaml, values.yaml, .helmignore, helpers, workload and service templates, optional ingress, HPA, network policy, PVC, ConfigMap, Secret, notes, and a test pod. mkscript does not install the chart or access a Kubernetes cluster.
 .PP
 For Bash files on Linux and macOS,
 .B mkscript
@@ -119,7 +129,9 @@ The non-script templates supported on every platform are
 .BR terraform ,
 .BR ansible ,
 .BR dockerfile ,
+.BR docker ,
 .BR docker-compose ,
+.BR helm ,
 .BR k8s-namespace ,
 .BR k8s-pod ,
 .BR k8s-deployment ,
@@ -215,7 +227,9 @@ Select the file template.
 Supported values are
 .BR bash ,
 .BR dockerfile ,
+.BR docker ,
 .BR docker-compose ,
+.BR helm ,
 .BR k8s-namespace ,
 .BR k8s-pod ,
 .BR k8s-deployment ,
@@ -292,11 +306,13 @@ after the shebang for the Bash template on Linux/macOS, or
 for the
 .B cmd
 template on Windows.
+It cannot be combined with an existing global target, file lookup, move, check, or remove mode.
 .TP
 .B \-g, \-\-global
 Create a global shortcut in the detected user bin directory.
 On Linux and macOS this is a symlink for the Bash template.
 On Windows this is a managed .cmd wrapper for the generated command file or for an existing local path after confirmation.
+It applies only to the platform script template.
 .TP
 .B \-c
 Check whether the expected global symlink or wrapper exists and print its path when it does.

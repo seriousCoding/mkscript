@@ -1,6 +1,6 @@
 # mkscript
 
-`mkscript` creates command-script, Bash, Dockerfile, Docker Compose, Kubernetes, Terraform, and Ansible starter files without overwriting existing paths. It uses native Bash on Linux/macOS and a native PowerShell implementation on Windows.
+`mkscript` creates complete, editable command-script, Bash, Dockerfile, Docker Compose, Kubernetes, Terraform, Ansible, and Helm starters without overwriting existing paths. It uses native Bash on Linux/macOS and a native PowerShell implementation on Windows.
 
 Quick links: [`INSTALL.md`](INSTALL.md) | [Public install site](https://seriouscoding.github.io/install/) | [Releases](https://github.com/seriousCoding/mkscript/releases) | [Checksums](https://github.com/seriousCoding/mkscript/releases/latest/download/SHA256SUMS) | [Official packaging guide](docs/official-package-inclusion.md)
 
@@ -63,16 +63,30 @@ For versioned package links, checksum verification, and platform-specific notes,
 - On Linux and macOS, creates Bash starter files by default with `#!/usr/bin/env bash` and the standard metadata header.
 - On Windows, creates `.cmd` starter files by default with `@echo off` and the same metadata header rendered as `rem` comments.
 - `-s` and `--strict` add `set -euo pipefail` for Bash on Linux/macOS and `setlocal EnableExtensions EnableDelayedExpansion` for `.cmd` on Windows.
-- `--template terraform`, `--template ansible`, `--template dockerfile`, and `--template docker-compose` work on every platform.
+- `--template terraform`, `--template ansible`, `--template dockerfile` (or `docker`), `--template docker-compose`, and `--template helm` work on every platform.
 - Built-in Kubernetes starter templates work on every platform for `k8s-namespace`, `k8s-pod`, `k8s-deployment`, `k8s-service`, `k8s-configmap`, `k8s-secret`, `k8s-ingress`, `k8s-networkpolicy`, `k8s-serviceaccount`, `k8s-role`, `k8s-rolebinding`, `k8s-clusterrole`, `k8s-clusterrolebinding`, `k8s-persistentvolume`, `k8s-persistentvolumeclaim`, `k8s-storageclass`, `k8s-statefulset`, `k8s-daemonset`, `k8s-job`, `k8s-cronjob`, and `k8s-horizontalpodautoscaler`.
 - Windows supports `cmd` plus the non-script templates above. It does not support `--template bash`.
 - `-g`, `-c`, `-r`, and `-mv` manage Bash symlinks on Linux/macOS and managed `.cmd` wrappers on Windows.
 - `-f` and `--files` list or look up platform-native commands and files.
-- Refuses to overwrite existing files, symlinks, directories, or managed wrapper paths.
+- Omitted template targets use a standard name and require confirmation. Explicit extensionless targets add the template extension except Dockerfiles and Helm chart directories.
+- Refuses to overwrite existing files, chart directories, symlinks, directories, or managed wrapper paths.
 - Ships with tests, a man page, Debian packaging, RPM packaging, Homebrew support, and GitHub Actions automation.
 - Generates WinGet and Chocolatey metadata and can publish catalog updates from tagged releases when repository credentials are configured.
 
 ## Usage
+
+When no target is supplied, `mkscript` prompts before creating the standard target and prints the explicit alternative. For example, `mkscript -t docker` creates `Dockerfile` after confirmation and prints `mkscript -t docker Dockerfile`. Declining leaves the filesystem unchanged.
+
+| Template | Default target | Extension added to explicit extensionless targets |
+| --- | --- | --- |
+| Bash (Unix) | `script.sh` | `.sh` when `-t bash` is selected; the default `mkscript NAME` keeps the supplied Unix script name for compatibility |
+| CMD (Windows) | `script.cmd` | `.cmd` |
+| Terraform | `main.tf` | `.tf` |
+| Ansible | `site.yml` | `.yml` |
+| Dockerfile / Docker | `Dockerfile` | none |
+| Docker Compose | `docker-compose.yml` | `.yml` |
+| Kubernetes | resource name plus `.yaml` | `.yaml` |
+| Helm | `chart` directory | none |
 
 ```bash
 mkscript hello-world
@@ -152,13 +166,13 @@ This creates:
 Dockerfile starter:
 
 ```bash
-mkscript --template dockerfile Dockerfile
+mkscript --template docker
 ```
 
 Docker Compose starter:
 
 ```bash
-mkscript --template docker-compose compose.yaml
+mkscript --template docker-compose
 ```
 
 Kubernetes Deployment starter:
@@ -166,6 +180,18 @@ Kubernetes Deployment starter:
 ```bash
 mkscript --template k8s-deployment deployment.yaml
 ```
+
+Helm chart starter:
+
+```bash
+mkscript --template helm service-chart
+helm lint service-chart
+helm template service-chart service-chart
+```
+
+The generated chart includes `Chart.yaml`, `values.yaml`, `.helmignore`, helpers, deployment, service, service account, ingress, autoscaling, network policy, persistent volume claim, config map, secret, notes, and a Helm test pod. Values expose image, service, resources, security contexts, ingress, persistence, autoscaling, network policy, configuration, secret references, and scheduling controls.
+
+Docker Compose includes a service, restart policy, health check, resource limits, named volume, and named bridge network. Kubernetes templates include a complete editable manifest for each supported resource; update cluster-specific values such as ingress classes, storage provisioners, host paths, and credentials before applying them.
 
 Global shortcut:
 

@@ -50,11 +50,17 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $case.Path)) { throw "Windows template creation failed: $($case.Template)" }
         if (-not (Select-String -Quiet -LiteralPath $case.Path -Pattern $case.Needle -SimpleMatch)) { throw "Windows template content failed: $($case.Template)" }
     }
+    & $command -t docker app-container
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path app-container) -or -not (Select-String -Quiet -LiteralPath app-container -Pattern 'HEALTHCHECK' -SimpleMatch)) { throw 'docker alias template failed' }
+    & $command -t docker-compose compose-default
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path compose-default.yml) -or -not (Select-String -Quiet -LiteralPath compose-default.yml -Pattern 'networks:' -SimpleMatch) -or -not (Select-String -Quiet -LiteralPath compose-default.yml -Pattern 'volumes:' -SimpleMatch)) { throw 'Compose extension or operational sections failed' }
+    & $command -t helm service-chart
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path service-chart/Chart.yaml) -or -not (Test-Path service-chart/values.yaml) -or -not (Test-Path service-chart/templates/deployment.yaml) -or -not (Test-Path service-chart/templates/tests/test-connection.yaml)) { throw 'Helm chart generation failed' }
     $bashErrorPath = Join-Path $sandbox 'bash-template-error.txt'
     $bashProcess = Start-Process -FilePath $launcher -ArgumentList @('-t', 'bash', 'nope') -RedirectStandardError $bashErrorPath -PassThru -Wait
     $bashExitCode = $bashProcess.ExitCode
     $bashError = Get-Content -LiteralPath $bashErrorPath -Raw
-    if ($bashExitCode -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
+    if ($bashExitCode -ne 64 -or $bashError -notmatch 'expected cmd, terraform, ansible, dockerfile, docker-compose, helm, or a supported k8s-\* template') { throw 'Windows bash template rejection failed' }
     & $command -g tool
     if (-not (Test-Path "$env:MKSCRIPT_BIN_DIR/tool.cmd")) { throw 'wrapper creation failed' }
     & $command -c tool

@@ -20,11 +20,11 @@ Usage:
   mkscript -f|--files [DEPTH]
   mkscript -f|--files NAME [NAME ...]
 
-Create a new Windows command, Docker, Kubernetes, Terraform, or Ansible file.
+Create a new Windows command, Docker, Kubernetes, Terraform, Ansible, or Helm chart.
 Global wrapper management applies to command scripts only.
 
 Options:
-  -t, --template TEMPLATE  use cmd, terraform, ansible, dockerfile, docker-compose,
+  -t, --template TEMPLATE  use cmd, terraform, ansible, dockerfile (or docker), docker-compose, helm,
                            k8s-namespace, k8s-pod, k8s-deployment, k8s-service,
                            k8s-configmap, k8s-secret, k8s-ingress, k8s-networkpolicy,
                            k8s-serviceaccount, k8s-role, k8s-rolebinding,
@@ -32,14 +32,30 @@ Options:
                            k8s-persistentvolume, k8s-persistentvolumeclaim,
                            k8s-storageclass, k8s-statefulset, k8s-daemonset,
                            k8s-job, k8s-cronjob, or k8s-horizontalpodautoscaler
-  -f, --files              list or look up native Windows files/commands
+  -f, --files              list or look up native Windows files and commands
   -mv                      move a command script to a path or existing directory and update its wrapper
-  -s, --strict             enable delayed expansion in a generated .cmd file
-  -g, --global             create a .cmd wrapper in the user bin directory
-  -c                       check whether the expected wrapper exists
-  -r                       remove the expected wrapper after confirmation
+  -s, --strict             enable delayed expansion in a new .cmd file only
+  -g, --global             create a .cmd wrapper for a new or existing command file only
+  -c                       check whether the expected managed wrapper exists
+  -r                       remove the expected managed wrapper after confirmation
       --help               display this help and exit
       --version            output version information and exit
+
+Target rules:
+  An omitted target prompts for script.cmd, main.tf, site.yml, Dockerfile,
+  docker-compose.yml, a k8s resource .yaml, or the chart directory. Explicit
+  extensionless cmd, terraform, ansible, docker-compose, and k8s-* targets
+  receive their standard extension. docker is an alias for dockerfile.
+
+Flag rules:
+  -s, -g, -c, -r, and -mv apply only to cmd. -mv accepts SOURCE TARGET; if
+  TARGET is a directory, the source filename is retained. -f cannot be
+  combined with template, move, global, strict, check, or remove modes.
+
+Examples:
+  mkscript deploy             mkscript -t docker
+  mkscript -t terraform infra mkscript -t helm service-chart
+  mkscript -mv -g deploy scripts  mkscript -f powershell.exe
 '@
 }
 
@@ -56,6 +72,44 @@ function Get-UserBin {
 function Get-CommandTarget([string] $Path) {
     if ([IO.Path]::GetExtension($Path)) { return $Path }
     return "$Path.cmd"
+}
+
+function Normalize-Template([string] $Template) {
+    if ($Template -eq 'docker') { return 'dockerfile' }
+    return $Template
+}
+
+function Get-DefaultTarget([string] $Template) {
+    switch ($Template) {
+        'cmd' { return 'script.cmd' }
+        'terraform' { return 'main.tf' }
+        'ansible' { return 'site.yml' }
+        'dockerfile' { return 'Dockerfile' }
+        'docker-compose' { return 'docker-compose.yml' }
+        'helm' { return 'chart' }
+        default {
+            if ($Template -like 'k8s-*') { return "$($Template.Substring(4)).yaml" }
+            Stop-Mkscript "unsupported template: $Template" $UsageError
+        }
+    }
+}
+
+function Resolve-TemplateTarget([string] $Path, [string] $Template) {
+    if ($Template -in 'dockerfile','helm' -or [IO.Path]::GetExtension($Path)) { return $Path }
+    switch ($Template) {
+        'cmd' { return Get-CommandTarget $Path }
+        'terraform' { return "$Path.tf" }
+        'ansible' { return "$Path.yml" }
+        'docker-compose' { return "$Path.yml" }
+        default { if ($Template -like 'k8s-*') { return "$Path.yaml" } }
+    }
+    return $Path
+}
+
+function Confirm-DefaultTarget([string] $SelectedTemplate, [string] $Target, [string] $Template) {
+    $kind = if ($Template -eq 'helm') { 'chart directory' } else { 'filename' }
+    Write-Output "To provide a filename, use: mkscript -t $SelectedTemplate $Target"
+    if (-not (Confirm "No output $kind was supplied. Create '$Target'?")) { Stop-Mkscript 'creation cancelled' }
 }
 
 function Get-WrapperPath([string] $Target) {
@@ -119,6 +173,31 @@ function Get-StorageClassName([string] $TargetName) {
     return "$(Get-ManifestSafeName $TargetName)-storage"
 }
 
+function Write-HelmChart([string] $Target) {
+    $parent = Split-Path -Parent (Resolve-FullPath $Target)
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) { Stop-Mkscript "parent directory does not exist: $parent" }
+    if (Test-Path -LiteralPath $Target) { Stop-Mkscript "refusing to overwrite existing path: $Target" }
+    $name = Get-ManifestSafeName $Target
+    $templates = Join-Path $Target 'templates'
+    New-Item -ItemType Directory -Path (Join-Path $templates 'tests') -Force | Out-Null
+    @('apiVersion: v2', "name: $name", 'description: A complete Helm chart generated by mkscript.', 'type: application', 'version: 0.1.0', 'appVersion: "1.0.0"') | Set-Content -LiteralPath (Join-Path $Target 'Chart.yaml') -Encoding UTF8
+    @('replicaCount: 1', 'image:', '  repository: nginx', '  pullPolicy: IfNotPresent', '  tag: "1.29-alpine"', 'serviceAccount:', '  create: true', '  annotations: {}', 'service:', '  type: ClusterIP', '  port: 80', '  targetPort: 80', 'ingress:', '  enabled: false', '  className: ""', '  annotations: {}', '  hosts: []', '  tls: []', 'resources:', '  limits: { cpu: 500m, memory: 256Mi }', '  requests: { cpu: 100m, memory: 128Mi }', 'autoscaling:', '  enabled: false', '  minReplicas: 1', '  maxReplicas: 3', '  targetCPUUtilizationPercentage: 80', 'persistence:', '  enabled: false', '  accessModes: [ReadWriteOnce]', '  size: 1Gi', '  storageClass: ""', 'networkPolicy:', '  enabled: false', 'config: {}', 'secretRefs: []', 'podAnnotations: {}', 'podLabels: {}', 'podSecurityContext: {}', 'securityContext:', '  allowPrivilegeEscalation: false', '  readOnlyRootFilesystem: true', '  capabilities: { drop: [ALL] }', 'nodeSelector: {}', 'tolerations: []', 'affinity: {}') | Set-Content -LiteralPath (Join-Path $Target 'values.yaml') -Encoding UTF8
+    @('.DS_Store', '.git/', '*.tgz') | Set-Content -LiteralPath (Join-Path $Target '.helmignore') -Encoding UTF8
+    @('{{- define "chart.name" -}}{{ default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}{{- end }}', '{{- define "chart.fullname" -}}{{ default (include "chart.name" .) .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}{{- end }}', '{{- define "chart.labels" -}}', 'app.kubernetes.io/name: {{ include "chart.name" . }}', 'app.kubernetes.io/instance: {{ .Release.Name }}', 'app.kubernetes.io/managed-by: {{ .Release.Service }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates '_helpers.tpl') -Encoding UTF8
+    @('apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: {{ include "chart.fullname" . }}', '  labels: {{- include "chart.labels" . | nindent 4 }}', 'spec:', '  replicas: {{ .Values.replicaCount }}', '  selector:', '    matchLabels: { app.kubernetes.io/name: {{ include "chart.name" . }}, app.kubernetes.io/instance: {{ .Release.Name }} }', '  template:', '    metadata:', '      labels: {{- include "chart.labels" . | nindent 8 }}', '    spec:', '      serviceAccountName: {{ include "chart.fullname" . }}', '      containers:', '        - name: {{ .Chart.Name }}', '          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"', '          imagePullPolicy: {{ .Values.image.pullPolicy }}', '          ports: [{ name: http, containerPort: {{ .Values.service.targetPort }} }]', '          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}', '          resources: {{- toYaml .Values.resources | nindent 12 }}') | Set-Content -LiteralPath (Join-Path $templates 'deployment.yaml') -Encoding UTF8
+    @('apiVersion: v1', 'kind: Service', 'metadata:', '  name: {{ include "chart.fullname" . }}', '  labels: {{- include "chart.labels" . | nindent 4 }}', 'spec:', '  type: {{ .Values.service.type }}', '  selector: { app.kubernetes.io/name: {{ include "chart.name" . }}, app.kubernetes.io/instance: {{ .Release.Name }} }', '  ports: [{ name: http, port: {{ .Values.service.port }}, targetPort: http }]') | Set-Content -LiteralPath (Join-Path $templates 'service.yaml') -Encoding UTF8
+    @('{{- if .Values.serviceAccount.create }}', 'apiVersion: v1', 'kind: ServiceAccount', 'metadata:', '  name: {{ include "chart.fullname" . }}', '  annotations: {{- toYaml .Values.serviceAccount.annotations | nindent 4 }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'serviceaccount.yaml') -Encoding UTF8
+    @('{{- if .Values.ingress.enabled }}', 'apiVersion: networking.k8s.io/v1', 'kind: Ingress', 'metadata:', '  name: {{ include "chart.fullname" . }}', 'spec:', '  ingressClassName: {{ .Values.ingress.className }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'ingress.yaml') -Encoding UTF8
+    @('{{- if .Values.autoscaling.enabled }}', 'apiVersion: autoscaling/v2', 'kind: HorizontalPodAutoscaler', 'metadata: { name: {{ include "chart.fullname" . }} }', 'spec:', '  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "chart.fullname" . }} }', '  minReplicas: {{ .Values.autoscaling.minReplicas }}', '  maxReplicas: {{ .Values.autoscaling.maxReplicas }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'hpa.yaml') -Encoding UTF8
+    @('{{- if .Values.networkPolicy.enabled }}', 'apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata: { name: {{ include "chart.fullname" . }} }', 'spec: { podSelector: {}, policyTypes: [Ingress] }', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'networkpolicy.yaml') -Encoding UTF8
+    @('{{- if .Values.persistence.enabled }}', 'apiVersion: v1', 'kind: PersistentVolumeClaim', 'metadata: { name: {{ include "chart.fullname" . }} }', 'spec:', '  accessModes: {{- toYaml .Values.persistence.accessModes | nindent 4 }}', '  resources: { requests: { storage: {{ .Values.persistence.size }} } }', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'persistentvolumeclaim.yaml') -Encoding UTF8
+    @('{{- if .Values.config }}', 'apiVersion: v1', 'kind: ConfigMap', 'metadata: { name: {{ include "chart.fullname" . }} }', 'data: {{- toYaml .Values.config | nindent 2 }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'configmap.yaml') -Encoding UTF8
+    @('{{- range .Values.secretRefs }}', 'apiVersion: v1', 'kind: Secret', 'metadata: { name: {{ .name }} }', 'type: Opaque', 'stringData: {{- toYaml .data | nindent 2 }}', '{{- end }}') | Set-Content -LiteralPath (Join-Path $templates 'secret.yaml') -Encoding UTF8
+    'Use kubectl port-forward service/{{ include "chart.fullname" . }} 8080:{{ .Values.service.port }} to access the service locally.' | Set-Content -LiteralPath (Join-Path $templates 'NOTES.txt') -Encoding UTF8
+    @('apiVersion: v1', 'kind: Pod', 'metadata:', '  name: "{{ include \"chart.fullname\" . }}-test-connection"', '  annotations: { "helm.sh/hook": test }', 'spec:', '  restartPolicy: Never', '  containers:', '    - name: wget', '      image: busybox:1.36', '      command: ["wget"]', '      args: ["{{ include \"chart.fullname\" . }}:{{ .Values.service.port }}"]') | Set-Content -LiteralPath (Join-Path $templates 'tests/test-connection.yaml') -Encoding UTF8
+    Write-Output "Created Helm chart '$Target'"
+}
+
 function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
     $parent = Split-Path -Parent (Resolve-FullPath $Target)
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) { Stop-Mkscript "parent directory does not exist: $parent" }
@@ -136,13 +215,14 @@ function Write-NewFile([string] $Target, [string] $Template, [bool] $Strict) {
     $hashHeader = @("# File: $leaf", '# Description:', "# Created: $date", "# Creator: $creator", '')
     switch ($Template) {
         'cmd' {
-            $lines = @('@echo off', "rem Script: $leaf", 'rem Description:', "rem Created: $date", "rem Creator: $creator")
+            $lines = @('@echo off', "rem Script: $leaf", 'rem Description:', "rem Created: $date", "rem Creator: $creator", 'setlocal EnableExtensions')
             if ($Strict) { $lines += 'setlocal EnableExtensions EnableDelayedExpansion' }
+            $lines += @('if /I "%~1"=="--help" goto :usage', 'goto :main', '', ':usage', 'echo Usage: %~nx0 [options]', 'exit /b 0', '', ':main', 'rem Add application logic here.', 'echo Running command script.', 'set "exit_code=%errorlevel%"', 'endlocal & exit /b %exit_code%')
         }
-        'terraform' { $lines = $hashHeader + @('terraform {', '  required_version = ">= 1.0.0"', '}') }
-        'ansible' { $lines = $hashHeader + @('---', "- name: $leaf", '  hosts: all', '  gather_facts: false', '  tasks: []') }
-        'dockerfile' { $lines = $hashHeader + @('FROM alpine:3.22', 'WORKDIR /app', 'COPY . .', 'CMD ["sh"]') }
-        'docker-compose' { $lines = $hashHeader + @('services:', "  ${serviceName}:", '    image: nginx:1.29-alpine', '    ports:', '      - "8080:80"') }
+        'terraform' { $lines = $hashHeader + @('terraform {', '  required_version = ">= 1.0.0"', '  required_providers {', '    # Add providers required by this configuration.', '  }', '}', '', 'variable "name" {', '  description = "Name used by resources in this configuration."', '  type        = string', '}', '', 'locals {', '  common_tags = { managed_by = "terraform" }', '}', '', 'output "name" {', '  value = var.name', '}') }
+        'ansible' { $lines = $hashHeader + @('---', "- name: $leaf", '  hosts: all', '  gather_facts: true', '  vars: {}', '  pre_tasks:', '    - name: Validate managed hosts', '      ansible.builtin.assert:', '        that: ansible_facts.os_family is defined', '  tasks:', '    - name: Add application tasks', '      ansible.builtin.debug:', '        msg: "Replace this task with application configuration."', '      changed_when: false', '  handlers: []', '  post_tasks: []') }
+        'dockerfile' { $lines = $hashHeader + @('FROM alpine:3.22', 'RUN addgroup -S app && adduser -S app -G app', 'WORKDIR /app', 'COPY --chown=app:app . .', 'USER app', 'EXPOSE 8080', 'HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/ || exit 1', 'CMD ["sh", "-c", "echo Replace this command with your application; sleep infinity"]') }
+        'docker-compose' { $lines = $hashHeader + @('services:', "  ${serviceName}:", '    image: nginx:1.29-alpine', '    restart: unless-stopped', '    ports:', '      - "8080:80"', '    environment:', '      NGINX_ENTRYPOINT_QUIET_LOGS: "1"', '    volumes:', "      - ${serviceName}-data:/usr/share/nginx/html", '    networks:', "      - ${serviceName}-network", '    healthcheck:', '      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]', '      interval: 30s', '      timeout: 5s', '      retries: 3', '    deploy:', '      resources:', '        limits:', '          cpus: "0.50"', '          memory: 256M', 'networks:', "  ${serviceName}-network:", '    driver: bridge', 'volumes:', "  ${serviceName}-data:") }
         'k8s-namespace' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Namespace', 'metadata:', "  name: $resourceName") }
         'k8s-pod' { $lines = $hashHeader + @('apiVersion: v1', 'kind: Pod', 'metadata:', "  name: $resourceName", '  labels:', "    app: $resourceName", 'spec:', '  containers:', "    - name: $resourceName", '      image: registry.k8s.io/pause:3.10') }
         'k8s-deployment' { $lines = $hashHeader + @('apiVersion: apps/v1', 'kind: Deployment', 'metadata:', "  name: $resourceName", 'spec:', '  replicas: 1', '  selector:', '    matchLabels:', "      app: $resourceName", '  template:', '    metadata:', '      labels:', "        app: $resourceName", '    spec:', '      containers:', "        - name: $resourceName", '          image: registry.k8s.io/pause:3.10') }
@@ -199,12 +279,12 @@ function Find-Files([string[]] $Terms) {
     if ($failed) { exit 1 }
 }
 
-$template = 'cmd'; $strict = $false; $global = $false; $mode = 'create'; $paths = @()
+$template = 'cmd'; $selectedTemplate = 'cmd'; $strict = $false; $global = $false; $mode = 'create'; $paths = @()
 for ($i=0; $i -lt $Arguments.Count; $i++) {
     $argument=$Arguments[$i]
     if ($argument -eq '--help') { Show-Help; exit 0 }
     if ($argument -eq '--version') { Write-Output "$Name $Version"; exit 0 }
-    if ($argument -in '-t','--template') { if (++$i -ge $Arguments.Count) { Stop-Mkscript 'missing template value' $UsageError }; $template=$Arguments[$i]; continue }
+    if ($argument -in '-t','--template') { if (++$i -ge $Arguments.Count) { Stop-Mkscript 'missing template value' $UsageError }; $selectedTemplate=$Arguments[$i]; $template=Normalize-Template $selectedTemplate; continue }
     if ($argument -in '-s','--strict') { $strict=$true; continue }
     if ($argument -in '-g','--global') { $global=$true; continue }
     if ($argument -in '-f','--files') { $mode='files'; continue }
@@ -236,9 +316,14 @@ if ($mode -eq 'move') {
     if ($global -or $wasGlobal) { Write-Wrapper $target -Replace:($newWrapper -eq $oldWrapper) }
     Write-Output "Moved '$source' to '$(Resolve-FullPath $target)'"; exit 0
 }
-if ($paths.Count -ne 1) { Stop-Mkscript 'expected exactly one output path' $UsageError }
-$target = if ($template -eq 'cmd') { Get-CommandTarget $paths[0] } else { $paths[0] }
+if ($mode -in 'check','remove' -and $paths.Count -ne 1) { Stop-Mkscript 'expected exactly one output path' $UsageError }
+if ($paths.Count -gt 1) { Stop-Mkscript 'expected exactly one output path' $UsageError }
+$supportedTemplates = 'cmd','terraform','ansible','dockerfile','docker-compose','helm','k8s-namespace','k8s-pod','k8s-deployment','k8s-service','k8s-configmap','k8s-secret','k8s-ingress','k8s-networkpolicy','k8s-serviceaccount','k8s-role','k8s-rolebinding','k8s-clusterrole','k8s-clusterrolebinding','k8s-persistentvolume','k8s-persistentvolumeclaim','k8s-storageclass','k8s-statefulset','k8s-daemonset','k8s-job','k8s-cronjob','k8s-horizontalpodautoscaler'
+if ($template -notin $supportedTemplates) { Stop-Mkscript "unsupported template: $selectedTemplate (expected cmd, terraform, ansible, dockerfile, docker-compose, helm, or a supported k8s-* template)" $UsageError }
+$target = if ($paths.Count -eq 0) { $defaultTarget=Get-DefaultTarget $template; Confirm-DefaultTarget $selectedTemplate $defaultTarget $template; $defaultTarget } else { Resolve-TemplateTarget $paths[0] $template }
 $wrapper = Get-WrapperPath $target
+if ($mode -eq 'check' -and $template -ne 'cmd') { Stop-Mkscript '-c is only supported with the cmd template' $UsageError }
+if ($mode -eq 'remove' -and $template -ne 'cmd') { Stop-Mkscript '-r is only supported with the cmd template' $UsageError }
 if ($mode -eq 'check') {
     if ($global -or $strict) { Stop-Mkscript 'invalid -c option combination' $UsageError }
     $wrapped=Get-WrapperTarget $wrapper
@@ -252,7 +337,6 @@ if ($mode -eq 'remove') {
     if (-not (Confirm "Remove wrapper '$wrapper'?")) { Stop-Mkscript 'wrapper removal cancelled' }
     Remove-Item -LiteralPath $wrapper -Force; Write-Output "Removed wrapper '$wrapper'"; exit 0
 }
-if ($template -notin 'cmd','terraform','ansible','dockerfile','docker-compose','k8s-namespace','k8s-pod','k8s-deployment','k8s-service','k8s-configmap','k8s-secret','k8s-ingress','k8s-networkpolicy','k8s-serviceaccount','k8s-role','k8s-rolebinding','k8s-clusterrole','k8s-clusterrolebinding','k8s-persistentvolume','k8s-persistentvolumeclaim','k8s-storageclass','k8s-statefulset','k8s-daemonset','k8s-job','k8s-cronjob','k8s-horizontalpodautoscaler') { Stop-Mkscript "unsupported template: $template (expected cmd, terraform, ansible, dockerfile, docker-compose, or a supported k8s-* template)" $UsageError }
 if ($strict -and $template -ne 'cmd') { Stop-Mkscript '--strict is only supported with the cmd template' $UsageError }
 if ($global -and $template -ne 'cmd') { Stop-Mkscript '--global is only supported with the cmd template' $UsageError }
 if (Test-Path -LiteralPath $target) {
@@ -263,5 +347,5 @@ if (Test-Path -LiteralPath $target) {
     Write-Wrapper $target; exit 0
 }
 if ($global) { Assert-WrapperAvailable $wrapper }
-Write-NewFile $target $template $strict
+if ($template -eq 'helm') { Write-HelmChart $target } else { Write-NewFile $target $template $strict }
 if ($global) { Write-Wrapper $target }

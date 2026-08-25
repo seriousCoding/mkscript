@@ -161,9 +161,10 @@ Common examples:
 ```bash
 mkscript demo
 mkscript -s deploy
-mkscript --template dockerfile Dockerfile
-mkscript --template docker-compose compose.yaml
-mkscript --template k8s-deployment deployment.yaml
+mkscript --template docker
+mkscript --template docker-compose
+mkscript --template k8s-deployment deployment
+mkscript --template helm service-chart
 mkscript demo -g
 mkscript -c demo
 mkscript -r demo
@@ -172,6 +173,10 @@ mkscript -f 1
 mkscript -f bash demo.sh
 printf '%s\n' bash demo.sh | mkscript -f
 ```
+
+When a creation target is omitted, `mkscript` asks before it creates the template's standard target and prints an explicit command users can run instead. Standard targets are `script.sh` (Unix Bash), `script.cmd` (Windows CMD), `main.tf`, `site.yml`, `Dockerfile`, `docker-compose.yml`, a Kubernetes resource `.yaml` file, and the `chart` Helm directory. Explicit extensionless Terraform, Ansible, Compose, Kubernetes, Bash-template, and CMD targets receive their normal extension. `docker` is an alias for `dockerfile`.
+
+`mkscript --template helm service-chart` creates a complete chart directory. Run `helm lint service-chart` and `helm template service-chart service-chart` before deploying it.
 
 ## More documentation
 
