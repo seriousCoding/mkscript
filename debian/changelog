@@ -1,3 +1,13 @@
+mkscript (1.5.3-1) unstable; urgency=medium
+
+  * test: provide default prompt input in CI
+  * test: align Homebrew Terraform template check
+  * test: update Homebrew checks for complete templates
+  * ci: allow local Homebrew formula validation
+  * feat: add complete templates and Helm charts
+
+ -- Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com>  Tue, 25 Aug 2026 00:59:31 +0000
+
 mkscript (1.5.2-1) unstable; urgency=medium
 
   * Improve global script moves

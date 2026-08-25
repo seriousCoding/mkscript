@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.3] - 2026-08-25
+
+### Changed
+
+- test: provide default prompt input in CI
+- test: align Homebrew Terraform template check
+- test: update Homebrew checks for complete templates
+- ci: allow local Homebrew formula validation
+- feat: add complete templates and Helm charts
+
 ## [1.5.2] - 2026-08-24
 
 ### Changed

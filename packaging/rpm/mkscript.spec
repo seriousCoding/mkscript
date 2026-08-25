@@ -1,5 +1,5 @@
 Name:           mkscript
-Version:        1.5.2
+Version:        1.5.3
 Release:        1%{?dist}
 Summary:        Create Bash, Docker, Kubernetes, Terraform, and Ansible starter files safely
 
@@ -43,6 +43,13 @@ make test
 %{_mandir}/man1/mkscript.1*
 
 %changelog
+* Tue Aug 25 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.3-1
+- test: provide default prompt input in CI
+- test: align Homebrew Terraform template check
+- test: update Homebrew checks for complete templates
+- ci: allow local Homebrew formula validation
+- feat: add complete templates and Helm charts
+
 * Mon Aug 24 2026 Richard CodeJunky Townsend <rtownsend.appdesign.dev@gmail.com> - 1.5.2-1
 - Improve global script moves
 
