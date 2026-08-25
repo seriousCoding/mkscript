@@ -53,7 +53,7 @@ class Mkscript < Formula
     assert_equal "\\n", terraform_lines[4]
     assert_equal "terraform {\\n", terraform_lines[5]
     assert_equal "  required_version = \\">= 1.0.0\\"\\n", terraform_lines[6]
-    assert_equal "}\\n", terraform_lines[7]
+    assert_includes terraform_lines, "  required_providers {\\n"
 
     system bin/"mkscript", "site.yml", "--template", "ansible"
     ansible_lines = (testpath/"site.yml").read.lines
