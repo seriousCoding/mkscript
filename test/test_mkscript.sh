@@ -1225,7 +1225,7 @@ test_overwrite_refusal() {
 }
 
 test_missing_output_path() {
-  run_capture "$MKSCRIPT_UNDER_TEST"
+  run_capture_with_input $'\n' "$MKSCRIPT_UNDER_TEST"
   assert_status 73 "$RUN_STATUS" 'unconfirmed default output should stop creation'
   assert_contains "$RUN_STDOUT" "No output filename was supplied. Create 'script.sh'?" 'default output should be explained'
   assert_contains "$RUN_STDERR" 'creation cancelled' 'unconfirmed default output should be cancelled'
