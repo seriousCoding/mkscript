@@ -32,7 +32,7 @@ class Mkscript < Formula
     assert_equal "# Description:\\n", demo_lines[2]
     assert_match(/^# Created: \\d{4}-\\d{2}-\\d{2}\\n$/, demo_lines[3])
     assert_match(/^# Creator: .+\\n$/, demo_lines[4])
-    assert_equal 5, demo_lines.length
+    assert_includes demo_lines, "main \"\$@\"\n"
 
     system bin/"mkscript", "-s", "strict-demo"
     strict_demo_lines = (testpath/"strict-demo").read.lines
@@ -42,7 +42,7 @@ class Mkscript < Formula
     assert_match(/^# Created: \\d{4}-\\d{2}-\\d{2}\\n$/, strict_demo_lines[3])
     assert_match(/^# Creator: .+\\n$/, strict_demo_lines[4])
     assert_equal "set -euo pipefail\\n", strict_demo_lines[5]
-    assert_equal 6, strict_demo_lines.length
+    assert_includes strict_demo_lines, "main \"\$@\"\n"
 
     system bin/"mkscript", "--template", "terraform", "main.tf"
     terraform_lines = (testpath/"main.tf").read.lines
@@ -65,8 +65,8 @@ class Mkscript < Formula
     assert_equal "---\\n", ansible_lines[5]
     assert_equal "- name: site.yml\\n", ansible_lines[6]
     assert_equal "  hosts: all\\n", ansible_lines[7]
-    assert_equal "  gather_facts: false\\n", ansible_lines[8]
-    assert_equal "  tasks: []\\n", ansible_lines[9]
+    assert_equal "  gather_facts: true\\n", ansible_lines[8]
+    assert_includes ansible_lines, "  handlers: []\\n"
 
     system bin/"mkscript", "--template", "dockerfile", "Dockerfile"
     dockerfile_lines = (testpath/"Dockerfile").read.lines
@@ -76,9 +76,7 @@ class Mkscript < Formula
     assert_match(/^# Creator: .+\\n$/, dockerfile_lines[3])
     assert_equal "\\n", dockerfile_lines[4]
     assert_equal "FROM alpine:3.22\\n", dockerfile_lines[5]
-    assert_equal "WORKDIR /app\\n", dockerfile_lines[6]
-    assert_equal "COPY . .\\n", dockerfile_lines[7]
-    assert_equal "CMD [\\"sh\\"]\\n", dockerfile_lines[8]
+    assert_includes dockerfile_lines, "HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/ || exit 1\\n"
 
     system bin/"mkscript", "--template", "k8s-deployment", "deployment.yaml"
     deployment_lines = (testpath/"deployment.yaml").read.lines

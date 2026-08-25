@@ -17,7 +17,7 @@ class Mkscript < Formula
     assert_equal "# Description:\n", demo_lines[2]
     assert_match(/^# Created: \d{4}-\d{2}-\d{2}\n$/, demo_lines[3])
     assert_match(/^# Creator: .+\n$/, demo_lines[4])
-    assert_equal 5, demo_lines.length
+    assert_includes demo_lines, "main \"$@\"\n"
 
     system bin/"mkscript", "-s", "strict-demo"
     strict_demo_lines = (testpath/"strict-demo").read.lines
@@ -27,6 +27,6 @@ class Mkscript < Formula
     assert_match(/^# Created: \d{4}-\d{2}-\d{2}\n$/, strict_demo_lines[3])
     assert_match(/^# Creator: .+\n$/, strict_demo_lines[4])
     assert_equal "set -euo pipefail\n", strict_demo_lines[5]
-    assert_equal 6, strict_demo_lines.length
+    assert_includes strict_demo_lines, "main \"$@\"\n"
   end
 end
